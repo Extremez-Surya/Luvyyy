@@ -8,9 +8,11 @@ wavelink>=3.0.0
 
 # ── Async & Networking ───────────────────────────────────────────
 aiohttp
+aiofiles
 httpx
 requests
 tasksio
+dnspython
 
 # ── Databases & Storage ──────────────────────────────────────────
 aiosqlite
@@ -23,10 +25,13 @@ python-dotenv
 pillow>=10.0.0
 numpy
 
-# ── Utilities & System ───────────────────────────────────────────
+# ── Utilities, Time & System ─────────────────────────────────────
+pytz
+python-dateutil
 psutil
 colorama
-python-dateutil
+tabulate
+beautifulsoup4
 mcstatus
 chess
 
@@ -41,3 +46,4 @@ langdetect
 fastapi
 uvicorn
 slowapi
+pydantic
