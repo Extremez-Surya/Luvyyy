@@ -1,0 +1,41 @@
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+myenv/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+
+# SQLite temp & journal files
+*.db-journal
+*.sqlite3-journal
+
+# Environment Secrets
+.env
+.env.local
+.env.*.local
+
+# Logs & temp files
+*.log
+logs/
+*.tmp
+*.temp
+
+# IDE & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+bin/

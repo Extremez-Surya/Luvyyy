@@ -1,0 +1,43 @@
+# ── Discord & Extensions ─────────────────────────────────────────
+discord.py>=2.3.0
+jishaku
+discord-ext-menus
+
+# ── Voice & Lavalink ─────────────────────────────────────────────
+wavelink>=3.0.0
+
+# ── Async & Networking ───────────────────────────────────────────
+aiohttp
+httpx
+requests
+tasksio
+
+# ── Databases & Storage ──────────────────────────────────────────
+aiosqlite
+pymongo
+motor
+PyYAML
+python-dotenv
+
+# ── Media & Image Processing ─────────────────────────────────────
+pillow>=10.0.0
+numpy
+
+# ── Utilities & System ───────────────────────────────────────────
+psutil
+colorama
+python-dateutil
+mcstatus
+chess
+
+# ── AI & Translation ─────────────────────────────────────────────
+openai
+duckduckgo-search
+deep-translator
+gTTS
+langdetect
+
+# ── Web Server & Healthcheck (24/7 Keep-Alive for Render) ─────────
+fastapi
+uvicorn
+slowapi

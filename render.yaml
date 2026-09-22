@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: luvyyy-bot
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python CodeX.py
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: TOKEN
+        sync: false
+      - key: OWNER_IDS
+        value: "731390792567881739,984409270344908872"
+      - key: brand_name
+        value: "Luvyyy"
+      - key: LAVALINK_HOST
+        value: "lavalink.serenetia.com"
+      - key: LAVALINK_PASSWORD
+        value: "youshallnotpass"
+      - key: LAVALINK_SECURE
+        value: "true"
+      - key: LAVALINK_PORT
+        value: "443"
+      - key: EMOJI_SYNC
+        value: "false"
+      - key: API_ENABLED
+        value: "true"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
