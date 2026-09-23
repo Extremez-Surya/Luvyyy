@@ -391,6 +391,11 @@ async def main():
     os.system("cls" if os.name == "nt" else "clear")
 
     try:
+        await client._async_setup_hook()
+    except Exception as e:
+        print(f"[CodeX] Setup hook warning: {e}")
+
+    try:
         await client.load_extension("jishaku")
     except commands.ExtensionAlreadyLoaded:
         pass
