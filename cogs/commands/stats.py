@@ -74,10 +74,9 @@ def create_stats_content(stats_data, selected):
             f"Slash Commands: **{stats_data['slash_cmds']}**"
         ),
         "Team Info": (
-            "There is only one person who made me. Thanks to him ❤️.\n\n"
-            f"**{ZYROX_OWNER} Main Owner & Developer**\n"
-            "[01]. [Vinay Kumar](https://discord.com/users/731390792567881739)\n"
-            "Username: `kumar_vinay`"
+            f"**{ZYROX_OWNER} Developers & Owners**\n\n"
+            "• **Developer / Owner**: [Vinay Kumar](https://discord.com/users/731390792567881739) (`731390792567881739`)\n"
+            "• **Developer / Owner**: [Surya](https://discord.com/users/984409270344908872) (`984409270344908872`)\n"
         ),
         "Code Info": (
             f"**{ZYROX_SEARCH} Codebase Overview**\n\n"

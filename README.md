@@ -165,8 +165,8 @@ python CodeX.py
 
 ---
 
-## ✦ Developer & Support
+## ✦ Developers & Support
 
-- **Developer:** Vinay Kumar (`!Alone💔`)
-- **Discord:** [kumar_vinay](https://discord.com/users/731390792567881739)
-- **GitHub:** [kumar_vinay](https://github.com/kumar_vinay)
+- **Developers:** Vinay Kumar (`!Alone💔`) & Surya (`Extremez`)
+- **Discord:** [kumar_vinay](https://discord.com/users/731390792567881739) & [Surya](https://discord.com/users/984409270344908872)
+- **GitHub:** [kumar_vinay](https://github.com/kumar_vinay) & [Extremez-Surya](https://github.com/Extremez-Surya)
