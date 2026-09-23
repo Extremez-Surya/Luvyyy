@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 import os
+import sys
 from discord.ext import commands, tasks
 import discord
 import aiohttp
@@ -151,6 +152,15 @@ class zyrox(commands.AutoShardedBot):
             if type(ctx.channel) == "public_thread":
                 return
             await self.invoke(ctx)
+
+    async def on_error(self, event_method: str, *args, **kwargs) -> None:
+        etype, evalue, _ = sys.exc_info()
+        if evalue:
+            if isinstance(evalue, discord.NotFound) or (isinstance(evalue, discord.HTTPException) and getattr(evalue, 'code', None) in (10008, 10003)):
+                return
+            if "unknown message" in str(evalue).lower():
+                return
+        await super().on_error(event_method, *args, **kwargs)
 
 def setup_bot():
     intents = discord.Intents.all()

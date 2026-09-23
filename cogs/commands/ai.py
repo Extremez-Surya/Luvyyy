@@ -656,9 +656,9 @@ Support server: https://discord.com/users/731390792567881739"""
                     await ctx .send (view=view)
                     return 
 
-            except discord .NotFound :
+            except (discord.NotFound, discord.HTTPException):
                 view = CV2View("🔍 Analysis", "Could not find the replied message.")
-                await ctx .send (view=view)
+                await ctx.send(view=view)
                 return 
 
 

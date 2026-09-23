@@ -16,6 +16,7 @@ import discord
 from utils.emoji import CROSS, DENIED, TICK, ZWARNING
 import asyncio
 import datetime
+from contextlib import suppress
 import re
 import typing
 import typing as t
@@ -803,7 +804,10 @@ class Moderation(commands.Cog):
   async def delsticker(self, ctx: commands.Context, *, name=None):
         if ctx.message.reference is None:
             return await ctx.reply("No replied message found")
-        msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        try:
+            msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        except (discord.NotFound, discord.HTTPException):
+            return await ctx.reply("No replied message found or it was deleted.")
         if len(msg.stickers) == 0:
             return await ctx.reply("No sticker found")
         try:
@@ -827,8 +831,11 @@ class Moderation(commands.Cog):
 
     
     if ctx.message.reference is not None:
-        referenced_message = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        message_content = str(referenced_message.content)
+        try:
+            referenced_message = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            message_content = str(referenced_message.content)
+        except (discord.NotFound, discord.HTTPException):
+            message_content = None
     else:
         message_content = str(ctx.message.content)
 
@@ -842,7 +849,8 @@ class Moderation(commands.Cog):
         if len(found_emojis) != 0:
             
             if len(found_emojis) > 15:
-                await init_message.delete()
+                with suppress(Exception):
+                    await init_message.delete()
                 return await ctx.reply("Maximum 15 emojis can be deleted at a time.")
 
             
@@ -855,11 +863,13 @@ class Moderation(commands.Cog):
                     continue  
                 except discord.Forbidden:
                     continue  
-            await init_message.delete()
+            with suppress(Exception):
+                await init_message.delete()
             return await ctx.reply(f"{TICK}> | Successfully deleted {delete_count}/{len(found_emojis)} emoji(s).")
 
     
-    await init_message.delete()
+    with suppress(Exception):
+        await init_message.delete()
     return await ctx.reply("No valid emoji found to delete.")
 
 

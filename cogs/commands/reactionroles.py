@@ -112,7 +112,7 @@ class ReactionRoles(commands.Cog):
                     try:
                         message = await channel.fetch_message(payload.message_id)
                         
-                    except discord.NotFound:
+                    except (discord.NotFound, discord.HTTPException, discord.Forbidden):
                         pass
 
                 # DM if enabled

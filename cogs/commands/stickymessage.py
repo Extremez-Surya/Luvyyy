@@ -99,7 +99,7 @@ class StickyMessage(commands.Cog):
             try:
                 last_msg = await message.channel.fetch_message(sticky_data['last_message_id'])
                 await last_msg.delete()
-            except discord.NotFound:
+            except (discord.NotFound, discord.HTTPException, discord.Forbidden):
                 pass
 
         content = None
@@ -163,7 +163,7 @@ class StickyMessage(commands.Cog):
                 try:
                     msg = await channel.fetch_message(data[0])
                     await msg.delete()
-                except discord.NotFound:
+                except (discord.NotFound, discord.HTTPException, discord.Forbidden):
                     pass
             
             await db.execute("DELETE FROM sticky_messages WHERE channel_id = ?", (channel.id,))

@@ -25,6 +25,7 @@ from utils.Tools import *
 import os
 import aiohttp
 from utils.cv2 import CV2
+from contextlib import suppress
 
 db_folder = 'db'
 db_file = 'giveaways.db'
@@ -107,52 +108,76 @@ class Giveaway(commands.Cog):
                 return
 
             channel = self.bot.get_channel(int(giveaway[6]))
-            if channel is not None:
-                try:
-                    retries = 3
-                    for attempt in range(retries):
-                        try:
-                            message = await channel.fetch_message(int(giveaway[2]))
-                            break
-                        except discord.NotFound:
+            if channel is None:
+                async with aiosqlite.connect(db_path) as db:
+                    await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
+                    await db.commit()
+                return
+
+            try:
+                retries = 3
+                for attempt in range(retries):
+                    try:
+                        message = await channel.fetch_message(int(giveaway[2]))
+                        break
+                    except (discord.NotFound, discord.HTTPException) as e:
+                        if isinstance(e, discord.NotFound) or getattr(e, 'code', None) == 10008 or "10008" in str(e):
                             async with aiosqlite.connect(db_path) as db:
                                 await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
                                 await db.commit()
                             return
-                        except aiohttp.ClientResponseError as e:
-                            if e.status == 503:
-                                if attempt < retries - 1:
-                                    await asyncio.sleep(2 ** attempt)
-                                    continue
-                                else:
-                                    raise
+                        if attempt < retries - 1:
+                            await asyncio.sleep(1)
+                            continue
+                        raise
+                    except aiohttp.ClientResponseError as e:
+                        if e.status == 503:
+                            if attempt < retries - 1:
+                                await asyncio.sleep(2 ** attempt)
+                                continue
                             else:
                                 raise
+                        else:
+                            raise
 
-                    users = [i.id async for i in message.reactions[0].users()]
-                    if self.bot.user.id in users:
-                        users.remove(self.bot.user.id)
+                users = []
+                if message.reactions:
+                    try:
+                        users = [i.id async for i in message.reactions[0].users()]
+                    except Exception:
+                        pass
+                if self.bot.user.id in users:
+                    users.remove(self.bot.user.id)
 
-                    if len(users) < 1:
+                if len(users) < 1:
+                    with suppress(Exception):
                         await message.reply(f"No one won the **{giveaway[5]}** giveaway, due to Not enough participants.")
-                        async with aiosqlite.connect(db_path) as db:
-                            await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (message.id, message.guild.id))
-                            await db.commit()
-                        return
-
-                    winners_count = min(len(users), int(giveaway[4]))
-                    winner = ', '.join(f'<@!{i}>' for i in random.sample(users, k=winners_count))
-
-                    desc = f"Ended at <t:{int(current_time)}:R>\nHosted by <@{int(giveaway[3])}>\nWinner(s): {winner}"
-                    view = CV2(f"{giveaway[5]}", desc)
-
-                    await message.edit(content=f"{TADAA} **GIVEAWAY ENDED** {TADAA}", view=view)
-                    await message.reply(f"{TADAA} Congrats {winner}, you won **{giveaway[5]}!**, Hosted by <@{int(giveaway[3])}>")
                     async with aiosqlite.connect(db_path) as db:
                         await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (message.id, message.guild.id))
                         await db.commit()
+                    return
 
-                except (discord.HTTPException, aiohttp.ClientResponseError) as e:
+                winners_count = min(len(users), int(giveaway[4]))
+                winner = ', '.join(f'<@!{i}>' for i in random.sample(users, k=winners_count))
+
+                desc = f"Ended at <t:{int(current_time)}:R>\nHosted by <@{int(giveaway[3])}>\nWinner(s): {winner}"
+                view = CV2(f"{giveaway[5]}", desc)
+
+                with suppress(Exception):
+                    await message.edit(content=f"{TADAA} **GIVEAWAY ENDED** {TADAA}", view=view)
+                with suppress(Exception):
+                    await message.reply(f"{TADAA} Congrats {winner}, you won **{giveaway[5]}!**, Hosted by <@{int(giveaway[3])}>")
+
+                async with aiosqlite.connect(db_path) as db:
+                    await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (message.id, message.guild.id))
+                    await db.commit()
+
+            except (discord.HTTPException, aiohttp.ClientResponseError) as e:
+                if isinstance(e, discord.NotFound) or getattr(e, 'code', None) == 10008 or "10008" in str(e):
+                    async with aiosqlite.connect(db_path) as db:
+                        await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
+                        await db.commit()
+                else:
                     logging.error(f"Error ending giveaway: {e}")
 
         except IndexError:
@@ -295,7 +320,8 @@ class Giveaway(commands.Cog):
             if re is None:
                 message = await ctx.send(view=CV2("❌ Error", "The giveaway was not found."))
                 await asyncio.sleep(5)
-                await message.delete()
+                with suppress(Exception):
+                    await message.delete()
                 return
 
             ch = self.bot.get_channel(int(re[6])) or ctx.channel
@@ -315,7 +341,8 @@ class Giveaway(commands.Cog):
 
             if len(users) < 1:
                 await ctx.send(f"{TICK} Successfully Ended the giveaway in <#{int(re[6])}>")
-                await msg.reply(f"No one won the **{re[5]}** giveaway, due to not enough participants.")
+                with suppress(Exception):
+                    await msg.reply(f"No one won the **{re[5]}** giveaway, due to not enough participants.")
                 await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (msg.id, msg.guild.id))
                 await db.commit()
                 return
@@ -326,12 +353,14 @@ class Giveaway(commands.Cog):
             desc = f"Ended at <t:{int(current_time)}:R>\nHosted by <@{int(re[3])}>\nWinner(s): {winner}"
             view = CV2(f"🎁 {re[5]}", desc)
 
-            await msg.edit(content="🎁 **GIVEAWAY ENDED** 🎁", view=view)
+            with suppress(Exception):
+                await msg.edit(content="🎁 **GIVEAWAY ENDED** 🎁", view=view)
 
             if int(ctx.channel.id) != int(re[6]):
                 await ctx.send(f"{TADAA} Successfully ended the giveaway in <#{int(re[6])}>")
 
-            await msg.reply(f" Congrats {winner}, you won **{re[5]}!**, Hosted by <@{int(re[3])}>")
+            with suppress(Exception):
+                await msg.reply(f" Congrats {winner}, you won **{re[5]}!**, Hosted by <@{int(re[3])}>")
             await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (msg.id, msg.guild.id))
             await db.commit()
 
@@ -344,7 +373,8 @@ class Giveaway(commands.Cog):
         if not ctx.message.reference:
             message = await ctx.reply("Reply to this command with the Giveaway Ended message to reroll.")
             await asyncio.sleep(5)
-            await message.delete()
+            with suppress(Exception):
+                await message.delete()
             return
 
         ref_id = ctx.message.reference.resolved.id if ctx.message.reference.resolved else ctx.message.reference.message_id

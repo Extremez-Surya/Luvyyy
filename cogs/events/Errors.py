@@ -111,13 +111,20 @@ class Errors(Cog):
       await ctx.reply(f'** Huh! I need {missing} Permission to run the {ctx.command.qualified_name}command! Give me {missing} Permission**', delete_after=7)
       return
 
+    if isinstance(error, discord.NotFound) or (isinstance(error, discord.HTTPException) and error.code in (10008, 50035, 10003)):
+      return
+
     if isinstance(error, discord.HTTPException):
+      if "unknown message" in str(error).lower():
+        return
       print(f"[ERROR] HTTPException in {ctx.command}: {error}")
       return
 
     if isinstance(error, commands.CommandInvokeError):
       orig = getattr(error, 'original', error)
-      if isinstance(orig, discord.HTTPException) and (orig.code in (50035, 10008) or "message_reference" in str(orig).lower()):
+      if isinstance(orig, discord.NotFound):
+        return
+      if isinstance(orig, discord.HTTPException) and (orig.code in (50035, 10008, 10003) or "message_reference" in str(orig).lower() or "unknown message" in str(orig).lower()):
         return
       print(f"[ERROR] CommandInvokeError in {ctx.command}: {error}")
       print(f"  Original: {getattr(error, 'original', error)}")

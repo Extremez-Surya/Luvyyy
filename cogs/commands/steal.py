@@ -33,14 +33,20 @@ class Steal(commands.Cog):
     @commands.has_permissions(manage_emojis=True)
     async def steal(self, ctx, emote=None):
         if ctx.message.reference:
-            ref_message = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-            attachments = ref_message.attachments
-            stickers = ref_message.stickers
-            emojis = [emote for emote in ref_message.content.split() if emote.startswith('<:') or emote.startswith('<a:')]
+            ref_message = None
+            try:
+                ref_message = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            except (discord.NotFound, discord.HTTPException):
+                ref_message = None
 
-            if attachments or stickers or emojis:
-                await self.create_buttons(ctx, attachments, stickers, emojis)
-                return
+            if ref_message:
+                attachments = ref_message.attachments
+                stickers = ref_message.stickers
+                emojis = [emote for emote in ref_message.content.split() if emote.startswith('<:') or emote.startswith('<a:')]
+
+                if attachments or stickers or emojis:
+                    await self.create_buttons(ctx, attachments, stickers, emojis)
+                    return
 
         if emote:
             await self.process_emoji(ctx, emote)
