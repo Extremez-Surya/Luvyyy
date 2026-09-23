@@ -35,7 +35,9 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Build outputs
+# Build outputs & Backups
 dist/
 build/
 bin/
+data_backup/
+*.zip

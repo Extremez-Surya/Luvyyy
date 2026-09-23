@@ -44,5 +44,12 @@ if __name__ == "__main__":
     auto_clean_disk()
     ensure_dependencies()
     
+    # Auto-restore databases if a new zip was deployed or databases were reset
+    try:
+        from utils.persistence import auto_restore_if_needed
+        auto_restore_if_needed()
+    except Exception as e:
+        print(f"[Persistence] Pre-startup check warning: {e}")
+
     import runpy
     runpy.run_path("CodeX.py", run_name="__main__")

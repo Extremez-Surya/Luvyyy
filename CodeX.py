@@ -120,8 +120,22 @@ async def on_ready():
         except Exception as e:
             print(f"Error syncing command tree: {e}")
 
+    async def init_persistence():
+        try:
+            from utils.persistence import get_current_system_stats, restore_from_cloud, create_backup
+            stats = get_current_system_stats()
+            if stats["total_records"] == 0:
+                print("\033[33m[Persistence] 🔍 Empty local database detected on startup. Checking Discord cloud for backup...\033[0m")
+                restored = await restore_from_cloud(client)
+                if restored:
+                    print("\033[32m[Persistence] ✅ Successfully recovered databases from Discord cloud!\033[0m")
+            create_backup("startup")
+        except Exception as e:
+            print(f"[Persistence] Startup persistence check warning: {e}")
+
     client.loop.create_task(sync_commands())
     client.loop.create_task(update_stats())
+    client.loop.create_task(init_persistence())
 
 
 @client.event
@@ -462,6 +476,13 @@ async def main():
                 attempt += 1
                 await asyncio.sleep(15)
     finally:
+        try:
+            from utils.persistence import create_backup
+            create_backup("bot_shutdown")
+            print("\033[32m[Persistence] 💾 Saved shutdown database snapshot to data_backup/latest_backup.zip\033[0m")
+        except Exception:
+            pass
+
         if not client.is_closed():
             print("\033[33m[CodeX] Closing Discord connection cleanly...\033[0m")
             try:
