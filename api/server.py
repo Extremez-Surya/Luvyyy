@@ -106,7 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(guilds.router, prefix="/api/v1/guilds", tags=["Guilds"], dependencies=[Depends(verify_api_key)])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"], dependencies=[Depends(verify_api_key)])
 
-    @app.get("/", summary="API Root", description="Returns basic bot information and online status.")
+    @app.api_route("/", methods=["GET", "HEAD"], summary="API Root", description="Returns basic bot information and online status.")
     async def root():
         return {
             "status": "online",
@@ -115,7 +115,7 @@ def create_app() -> FastAPI:
             "service": "24/7 Discord Bot on Render"
         }
 
-    @app.get("/health", summary="Health Check", description="Health check for Render container orchestration and uptime monitoring.")
+    @app.api_route("/health", methods=["GET", "HEAD"], summary="Health Check", description="Health check for Render container orchestration and uptime monitoring.")
     async def health():
         return {"status": "ok", "bot": BRAND_NAME}
 

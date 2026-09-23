@@ -9,6 +9,7 @@ wavelink>=3.0.0
 # ── Async & Networking ───────────────────────────────────────────
 aiohttp
 aiofiles
+aiohttp-socks
 httpx
 requests
 tasksio

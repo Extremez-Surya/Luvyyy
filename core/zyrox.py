@@ -13,6 +13,7 @@
 # ╚══════════════════════════════════════════════════════════════════╝
 
 from __future__ import annotations
+import os
 from discord.ext import commands, tasks
 import discord
 import aiohttp
@@ -41,6 +42,7 @@ class zyrox(commands.AutoShardedBot):
         intents = discord.Intents.all()
         intents.presences = True
         intents.members = True
+        discord_proxy = os.getenv("DISCORD_PROXY", "").strip() or None
         super().__init__(command_prefix=self.get_prefix,
                          case_insensitive=True,
                          intents=intents,
@@ -50,7 +52,8 @@ class zyrox(commands.AutoShardedBot):
                          owner_ids=OWNER_IDS,
                          allowed_mentions=discord.AllowedMentions(
                              everyone=False, replied_user=False, roles=False),
-                         shard_count=1)
+                         shard_count=1,
+                         proxy=discord_proxy)
         self.status_index = 0
         self.status_list = []
 

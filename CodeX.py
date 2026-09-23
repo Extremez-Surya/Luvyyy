@@ -346,26 +346,101 @@ def keep_alive():
 
 keep_alive()
 
+async def cleanup_client_session(bot):
+    try:
+        session = getattr(bot.http, "_HTTPClient__session", None)
+        if session and not session.closed:
+            await session.close()
+    except Exception:
+        pass
+    bot.http.connector = discord.utils.MISSING
+
+def extract_retry_after(error: discord.HTTPException) -> float:
+    # 1. Check HTTP response header 'Retry-After'
+    try:
+        if hasattr(error, "response") and error.response is not None:
+            val = error.response.headers.get("Retry-After")
+            if val:
+                return float(val)
+    except Exception:
+        pass
+
+    # 2. Check JSON response body {"retry_after": ...}
+    try:
+        if hasattr(error, "text") and error.text:
+            parsed = json.loads(error.text)
+            if isinstance(parsed, dict) and "retry_after" in parsed:
+                return float(parsed["retry_after"])
+    except Exception:
+        pass
+
+    return 0.0
+
 # --- Main Bot Execution ---
 async def main():
-    async with client:
-        os.system("cls" if os.name == "nt" else "clear")
+    os.system("cls" if os.name == "nt" else "clear")
+
+    try:
         await client.load_extension("jishaku")
-        
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                await client.start(TOKEN)
-                break
-            except discord.HTTPException as e:
-                if e.status == 429: # Rate limited
-                    wait_time = min((2 ** attempt) + random.random(), 60)
-                    print(f"Rate limited. Retrying in {wait_time:.2f} seconds...")
-                    await asyncio.sleep(wait_time)
+    except commands.ExtensionAlreadyLoaded:
+        pass
+    except Exception as e:
+        print(f"[CodeX] Jishaku status: {e}")
+
+    if not TOKEN or not TOKEN.strip():
+        print("\033[31m[CodeX] ❌ ERROR: 'TOKEN' environment variable is missing or empty! Please set TOKEN in your Render environment variables.\033[0m")
+        # Keep web server alive so Render container doesn't enter an infinite crash loop
+        while True:
+            await asyncio.sleep(3600)
+
+    attempt = 0
+    while True:
+        try:
+            print(f"\033[36m[CodeX] 🚀 Connecting to Discord Gateway (Attempt {attempt + 1})...\033[0m")
+            await client.start(TOKEN.strip())
+            break
+        except discord.HTTPException as e:
+            if e.status == 429: # Rate Limited (Discord or Cloudflare 1015)
+                retry_after = extract_retry_after(e)
+                if retry_after > 0:
+                    wait_time = retry_after + 2.0
+                    print(f"\033[33m[CodeX] ⚠️ Discord Rate Limit: Discord requested Retry-After {retry_after}s. Waiting {wait_time:.1f}s before reconnecting...\033[0m")
                 else:
-                    raise
-        else:
-            raise Exception("Bot failed to start after multiple retries due to rate limiting.")
+                    # Cloudflare 1015 or shared datacenter IP rate limit without explicit retry_after
+                    # Use exponential backoff (e.g., 30s, 60s, 120s, up to 300s) + jitter
+                    backoff = min(30 * (2 ** min(attempt, 4)), 300)
+                    wait_time = backoff + random.uniform(2.0, 5.0)
+                    sample = (e.text or str(e))[:200].replace('\n', ' ')
+                    print(f"\033[33m[CodeX] ⚠️ Shared IP / Gateway Rate Limited (HTTP 429). Response: {sample}\033[0m")
+                    print(f"\033[33m[CodeX] Backing off for {wait_time:.1f}s to allow the rate limit bucket to clear...\033[0m")
+                    print(f"\033[36m[CodeX] 💡 Tip: If Render shared IP persists in rate limiting, change Render Region to Frankfurt or set DISCORD_PROXY in Environment Variables.\033[0m")
+
+                await cleanup_client_session(client)
+                attempt += 1
+                await asyncio.sleep(wait_time)
+            elif e.status == 401:
+                print("\033[31m[CodeX] ❌ Invalid Discord Bot Token (HTTP 401 Unauthorized)! Please verify your TOKEN in Render environment variables.\033[0m")
+                while True:
+                    await asyncio.sleep(3600)
+            else:
+                print(f"\033[31m[CodeX] Discord HTTP Error {e.status}: {e}\033[0m")
+                await cleanup_client_session(client)
+                attempt += 1
+                await asyncio.sleep(15)
+        except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionResetError) as e:
+            print(f"\033[33m[CodeX] Network connection error: {e}. Retrying in 10s...\033[0m")
+            await cleanup_client_session(client)
+            attempt += 1
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"\033[31m[CodeX] Unexpected error during bot execution: {e}\033[0m")
+            traceback.print_exc()
+            await cleanup_client_session(client)
+            attempt += 1
+            await asyncio.sleep(15)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("\033[33m[CodeX] Shutting down...\033[0m")
