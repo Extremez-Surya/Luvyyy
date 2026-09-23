@@ -59,6 +59,20 @@ class zyrox(commands.AutoShardedBot):
         self.status_index = 0
         self.status_list = []
 
+    @property
+    def loop(self):
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                return asyncio.get_event_loop()
+            except RuntimeError:
+                return getattr(self, "_loop_val", None)
+
+    @loop.setter
+    def loop(self, val):
+        self._loop_val = val
+
     async def setup_hook(self):
         await self.load_extensions()
         self.status_task.start()

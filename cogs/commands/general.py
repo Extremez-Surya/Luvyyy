@@ -181,7 +181,7 @@ class General(commands.Cog):
   @commands.hybrid_command(name="membercount",
                            help="Get total member count of the server",
                            usage="membercount",
-                           aliases=["mc"])
+                           aliases=["members"])
   @blacklist_check()
   @ignore_check()
   @commands.cooldown(1, 2, commands.BucketType.user)
