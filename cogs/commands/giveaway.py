@@ -12,81 +12,208 @@
 # ║                                                                  ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
-from discord.ext import commands, tasks
-import datetime, pytz, time as t
-from discord.ui import Button, Select, View
-import aiosqlite, random, typing
-import sqlite3
-import asyncio
-import discord, logging
-from utils.emoji import ARROWRED, TADAA, TICK
-from discord.utils import get
-from utils.Tools import *
+from __future__ import annotations
 import os
-import aiohttp
-from utils.cv2 import CV2
+import re
+import time
+import random
+import datetime
+import typing
+from typing import Optional, List
+import asyncio
+import sqlite3
+import aiosqlite
 from contextlib import suppress
 
-db_folder = 'db'
-db_file = 'giveaways.db'
-db_path = os.path.join(db_folder, db_file)
-connection = sqlite3.connect(db_path)
+import discord
+from discord.ext import commands, tasks
 
-cursor = connection.cursor()
+from core import Cog, Context, zyrox
+from utils.config import BRAND_NAME, is_bot_owner
+from utils.emoji import TICK, CROSS, ARROWRED, ZTADA
 
-cursor.execute('''CREATE TABLE IF NOT EXISTS Giveaway (
-                    guild_id INTEGER,
-                    host_id INTEGER,
-                    start_time TIMESTAMP,
-                    ends_at TIMESTAMP,
-                    prize TEXT,
-                    winners INTEGER,
-                    message_id INTEGER,
-                    channel_id INTEGER,
-                    PRIMARY KEY (guild_id, message_id)
-                )''')
+DB_PATH = os.path.abspath(os.path.join("db", "giveaways.db"))
 
-connection.commit()
-connection.close()
+def init_giveaway_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('''CREATE TABLE IF NOT EXISTS Giveaway (
+        guild_id INTEGER,
+        host_id INTEGER,
+        start_time REAL,
+        ends_at REAL,
+        prize TEXT,
+        winners INTEGER,
+        message_id INTEGER,
+        channel_id INTEGER,
+        PRIMARY KEY (guild_id, message_id)
+    )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS GiveawayParticipants (
+        message_id INTEGER,
+        user_id INTEGER,
+        guild_id INTEGER,
+        PRIMARY KEY (message_id, user_id)
+    )''')
+    conn.commit()
+    conn.close()
 
-def convert(time):
-    pos = ["s","m","h","d"]
-    time_dict = {"s" : 1, "m" : 60, "h" : 3600 , "d" : 86400 , "f" : 259200}
-    unit = time[-1]
-    if unit not in pos:
-        return
-    try:
-        val = int(time[:-1])
-    except ValueError:
-        return
-    return val * time_dict[unit]
+init_giveaway_db()
 
-def WinnerConverter(winner):
-    try:
-        int(winner)
-    except ValueError:
-        try:
-           return int(winner[:-1])
-        except:
-            return -4
-    return winner
+def parse_time(time_str: str) -> Optional[int]:
+    """Parse time strings like '10m', '1h', '2d', '1w', '30s', '1h30m' into seconds."""
+    if not time_str:
+        return None
+    time_str = str(time_str).strip().lower()
+    if time_str.isdigit():
+        return int(time_str) * 60
 
-class Giveaway(commands.Cog):
-    def __init__(self, bot):
+    units = {
+        's': 1, 'sec': 1, 'second': 1, 'seconds': 1,
+        'm': 60, 'min': 60, 'minute': 60, 'minutes': 60,
+        'h': 3600, 'hr': 3600, 'hour': 3600, 'hours': 3600,
+        'd': 86400, 'day': 86400, 'days': 86400,
+        'w': 604800, 'wk': 604800, 'week': 604800, 'weeks': 604800
+    }
+
+    matches = re.findall(r'(\d+)\s*([a-zA-Z]+)', time_str)
+    if not matches:
+        return None
+
+    total_seconds = 0
+    for amount, unit in matches:
+        amount = int(amount)
+        unit = unit.lower()
+        if unit in units:
+            total_seconds += amount * units[unit]
+        else:
+            return None
+    return total_seconds if total_seconds > 0 else None
+
+def check_giveaway_perms(ctx: Context) -> bool:
+    """Checks if the user has permission to manage giveaways."""
+    if not ctx.guild:
+        return False
+    if is_bot_owner(ctx.author.id):
+        return True
+    if ctx.author.id == ctx.guild.owner_id:
+        return True
+    perms = ctx.author.guild_permissions
+    if perms.administrator or perms.manage_guild or perms.manage_messages:
+        return True
+    for role in ctx.author.roles:
+        if role.name.lower() in ["giveaway", "giveaways", "gw", "giveaway manager", "giveaway host"]:
+            return True
+    return False
+
+
+class GiveawayEnterView(discord.ui.View):
+    """Persistent button view for giveaway entries."""
+    def __init__(self, cog=None, count: int = 0):
+        super().__init__(timeout=None)
+        self.cog = cog
+        btn_label = f"🎉 Enter ({count})" if count > 0 else "🎉 Enter Giveaway"
+        button = discord.ui.Button(
+            label=btn_label,
+            style=discord.ButtonStyle.primary,
+            custom_id="giveaway_enter_btn"
+        )
+        button.callback = self.enter_cb
+        self.add_item(button)
+
+    async def enter_cb(self, interaction: discord.Interaction):
+        if self.cog:
+            await self.cog.handle_button_entry(interaction)
+        else:
+            # Fallback direct handler if cog reference not bound
+            await interaction.response.send_message("🎉 Entry received! Best of luck!", ephemeral=True)
+
+
+class Giveaway(Cog):
+    """Reliable, feature-rich Giveaway system with interactive buttons and reactions."""
+    def __init__(self, bot: zyrox):
         self.bot = bot
+        self.db_path = DB_PATH
+        self._loop_started = False
 
     async def cog_load(self) -> None:
-        await self.check_for_ended_giveaways() 
+        # Register persistent view so button interactions work after restart
+        self.bot.add_view(GiveawayEnterView(self))
+        asyncio.create_task(self._startup_init())
+
+    def cog_unload(self) -> None:
+        if self.GiveawayEnd.is_running():
+            self.GiveawayEnd.cancel()
+
+    async def _startup_init(self) -> None:
+        await self.bot.wait_until_ready()
+        await self.check_for_ended_giveaways()
         if not self.GiveawayEnd.is_running():
             self.GiveawayEnd.start()
 
-    async def cog_unload(self) -> None:
-        self.GiveawayEnd.cancel()
+    async def handle_button_entry(self, interaction: discord.Interaction):
+        message_id = interaction.message.id
+        user_id = interaction.user.id
+        guild_id = interaction.guild_id
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT prize, host_id FROM Giveaway WHERE message_id = ?", (message_id,)) as cur:
+                gw = await cur.fetchone()
+            if not gw:
+                return await interaction.response.send_message(f"{CROSS} This giveaway has already ended!", ephemeral=True)
+
+            prize, host_id = gw
+
+            async with db.execute("SELECT user_id FROM GiveawayParticipants WHERE message_id = ? AND user_id = ?", (message_id, user_id)) as cur:
+                already_in = await cur.fetchone()
+
+            if already_in:
+                await db.execute("DELETE FROM GiveawayParticipants WHERE message_id = ? AND user_id = ?", (message_id, user_id))
+                await db.commit()
+                async with db.execute("SELECT count(*) FROM GiveawayParticipants WHERE message_id = ?", (message_id,)) as cur:
+                    new_count = (await cur.fetchone())[0]
+                await interaction.response.send_message(f"You left the giveaway for **{prize}**.", ephemeral=True)
+            else:
+                await db.execute("INSERT INTO GiveawayParticipants(message_id, user_id, guild_id) VALUES(?, ?, ?)", (message_id, user_id, guild_id))
+                await db.commit()
+                async with db.execute("SELECT count(*) FROM GiveawayParticipants WHERE message_id = ?", (message_id,)) as cur:
+                    new_count = (await cur.fetchone())[0]
+                await interaction.response.send_message(f"🎉 You have entered the giveaway for **{prize}**! Good luck!", ephemeral=True)
+
+        with suppress(Exception):
+            view = GiveawayEnterView(self, count=new_count)
+            await interaction.message.edit(view=view)
+
+    async def get_participants(self, message: discord.Message) -> List[int]:
+        """Gathers participants from both database button clicks AND reactions."""
+        participants = set()
+        # 1. From database table
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.execute("SELECT user_id FROM GiveawayParticipants WHERE message_id = ?", (message.id,)) as cursor:
+                    rows = await cursor.fetchall()
+                    for r in rows:
+                        participants.add(r[0])
+        except Exception:
+            pass
+
+        # 2. From reactions on the message
+        if message.reactions:
+            for reaction in message.reactions:
+                try:
+                    async for user in reaction.users():
+                        if not user.bot and user.id != self.bot.user.id:
+                            participants.add(user.id)
+                except Exception:
+                    pass
+
+        participants.discard(self.bot.user.id)
+        return list(participants)
 
     async def check_for_ended_giveaways(self):
         try:
-            now = datetime.datetime.now().timestamp()
-            async with aiosqlite.connect(db_path) as db:
+            now = time.time()
+            async with aiosqlite.connect(self.db_path) as db:
                 async with db.execute(
                     "SELECT ends_at, guild_id, message_id, host_id, winners, prize, channel_id FROM Giveaway WHERE ends_at <= ?",
                     (now,)
@@ -95,353 +222,339 @@ class Giveaway(commands.Cog):
             for giveaway in ended_giveaways:
                 await self.end_giveaway(giveaway)
         except Exception as e:
-            logging.error(f"Error in check_for_ended_giveaways: {e}")
+            print(f"[Giveaway] Error checking ended giveaways: {e}")
 
     async def end_giveaway(self, giveaway):
+        ends_at, guild_id, message_id, host_id, winners, prize, channel_id = giveaway
         try:
-            current_time = datetime.datetime.now().timestamp()
-            guild = self.bot.get_guild(int(giveaway[1]))
+            guild = self.bot.get_guild(guild_id)
             if guild is None:
-                async with aiosqlite.connect(db_path) as db:
-                    await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
-                    await db.commit()
+                try:
+                    guild = await self.bot.fetch_guild(guild_id)
+                except Exception:
+                    guild = None
+            if guild is None:
                 return
 
-            channel = self.bot.get_channel(int(giveaway[6]))
+            channel = guild.get_channel(channel_id)
             if channel is None:
-                async with aiosqlite.connect(db_path) as db:
-                    await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
-                    await db.commit()
+                try:
+                    channel = await self.bot.fetch_channel(channel_id)
+                except Exception:
+                    channel = None
+            if channel is None:
                 return
 
             try:
-                retries = 3
-                for attempt in range(retries):
-                    try:
-                        message = await channel.fetch_message(int(giveaway[2]))
-                        break
-                    except (discord.NotFound, discord.HTTPException) as e:
-                        if isinstance(e, discord.NotFound) or getattr(e, 'code', None) == 10008 or "10008" in str(e):
-                            async with aiosqlite.connect(db_path) as db:
-                                await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
-                                await db.commit()
-                            return
-                        if attempt < retries - 1:
-                            await asyncio.sleep(1)
-                            continue
-                        raise
-                    except aiohttp.ClientResponseError as e:
-                        if e.status == 503:
-                            if attempt < retries - 1:
-                                await asyncio.sleep(2 ** attempt)
-                                continue
-                            else:
-                                raise
-                        else:
-                            raise
-
-                users = []
-                if message.reactions:
-                    try:
-                        users = [i.id async for i in message.reactions[0].users()]
-                    except Exception:
-                        pass
-                if self.bot.user.id in users:
-                    users.remove(self.bot.user.id)
-
-                if len(users) < 1:
-                    with suppress(Exception):
-                        await message.reply(f"No one won the **{giveaway[5]}** giveaway, due to Not enough participants.")
-                    async with aiosqlite.connect(db_path) as db:
-                        await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (message.id, message.guild.id))
+                message = await channel.fetch_message(message_id)
+            except (discord.NotFound, discord.HTTPException) as e:
+                if isinstance(e, discord.NotFound) or getattr(e, 'code', None) == 10008:
+                    async with aiosqlite.connect(self.db_path) as db:
+                        await db.execute("DELETE FROM Giveaway WHERE message_id = ?", (message_id,))
+                        await db.execute("DELETE FROM GiveawayParticipants WHERE message_id = ?", (message_id,))
                         await db.commit()
-                    return
+                return
 
-                winners_count = min(len(users), int(giveaway[4]))
-                winner = ', '.join(f'<@!{i}>' for i in random.sample(users, k=winners_count))
+            participants = await self.get_participants(message)
+            now = int(time.time())
 
-                desc = f"Ended at <t:{int(current_time)}:R>\nHosted by <@{int(giveaway[3])}>\nWinner(s): {winner}"
-                view = CV2(f"{giveaway[5]}", desc)
-
+            if len(participants) < 1:
+                embed = discord.Embed(
+                    title=f"🎉 {prize} — Ended",
+                    description=(
+                        f"**Winner(s):** No winner (Not enough participants)\n"
+                        f"**Hosted by:** <@{host_id}>\n"
+                        f"**Ended:** <t:{now}:R>"
+                    ),
+                    color=0x7289da
+                )
+                embed.set_footer(text="0 Winners • Ended")
+                view = discord.ui.View()
+                view.add_item(discord.ui.Button(label="Giveaway Ended", style=discord.ButtonStyle.secondary, disabled=True))
                 with suppress(Exception):
-                    await message.edit(content=f"{TADAA} **GIVEAWAY ENDED** {TADAA}", view=view)
+                    await message.edit(content="🎉 **GIVEAWAY ENDED** 🎉", embed=embed, view=view)
                 with suppress(Exception):
-                    await message.reply(f"{TADAA} Congrats {winner}, you won **{giveaway[5]}!**, Hosted by <@{int(giveaway[3])}>")
+                    await message.reply(f"No one won the **{prize}** giveaway due to not enough participants.")
+            else:
+                winners_count = min(len(participants), int(winners))
+                winner_ids = random.sample(participants, k=winners_count)
+                winners_str = ", ".join(f"<@{uid}>" for uid in winner_ids)
 
-                async with aiosqlite.connect(db_path) as db:
-                    await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (message.id, message.guild.id))
-                    await db.commit()
+                embed = discord.Embed(
+                    title=f"🎉 {prize} — Ended",
+                    description=(
+                        f"**Winner(s):** {winners_str}\n"
+                        f"**Hosted by:** <@{host_id}>\n"
+                        f"**Ended:** <t:{now}:R>"
+                    ),
+                    color=0x2ecc71
+                )
+                embed.set_footer(text=f"{winners_count} Winner(s) • Ended")
+                view = discord.ui.View()
+                view.add_item(discord.ui.Button(label=f"Ended ({len(participants)} entries)", style=discord.ButtonStyle.secondary, disabled=True))
+                with suppress(Exception):
+                    await message.edit(content="🎉 **GIVEAWAY ENDED** 🎉", embed=embed, view=view)
+                with suppress(Exception):
+                    await message.reply(
+                        f"🎉 Congratulations {winners_str}! You won **{prize}**!\n"
+                        f"Hosted by <@{host_id}> • [Jump to Giveaway]({message.jump_url})"
+                    )
 
-            except (discord.HTTPException, aiohttp.ClientResponseError) as e:
-                if isinstance(e, discord.NotFound) or getattr(e, 'code', None) == 10008 or "10008" in str(e):
-                    async with aiosqlite.connect(db_path) as db:
-                        await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
-                        await db.commit()
-                else:
-                    logging.error(f"Error ending giveaway: {e}")
-
-        except IndexError:
-            logging.error(f"Giveaway data is corrupted or missing: {giveaway}")
-            async with aiosqlite.connect(db_path) as db:
-                await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (giveaway[2], giveaway[1]))
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("DELETE FROM Giveaway WHERE message_id = ?", (message_id,))
+                await db.execute("DELETE FROM GiveawayParticipants WHERE message_id = ?", (message_id,))
                 await db.commit()
+
+        except Exception as e:
+            print(f"[Giveaway] Error ending giveaway {message_id}: {e}")
 
     @tasks.loop(seconds=5)
     async def GiveawayEnd(self):
         try:
-            now = datetime.datetime.now().timestamp()
-            async with aiosqlite.connect(db_path) as db:
+            now = time.time()
+            async with aiosqlite.connect(self.db_path) as db:
                 async with db.execute(
                     "SELECT ends_at, guild_id, message_id, host_id, winners, prize, channel_id FROM Giveaway WHERE ends_at <= ?",
                     (now,)
                 ) as cursor:
-                    ends_raw = await cursor.fetchall()
-            for giveaway in ends_raw:
+                    ended_giveaways = await cursor.fetchall()
+            for giveaway in ended_giveaways:
                 await self.end_giveaway(giveaway)
         except Exception as e:
-            logging.error(f"Error in GiveawayEnd task: {e}")
+            print(f"[Giveaway] Error in GiveawayEnd task: {e}")
 
+    @GiveawayEnd.before_loop
+    async def before_giveaway_end(self):
+        await self.bot.wait_until_ready()
 
+    # ══════════════════════════════════════════════════════════════════
+    # COMMANDS
+    # ══════════════════════════════════════════════════════════════════
 
-
-    @commands.hybrid_command(description="Starts a new giveaway.")
-    @blacklist_check()
-    @ignore_check()
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.has_guild_permissions(manage_guild=True)
-    async def gstart(self, ctx,
-                      time,
-                      winners: int,
-                      *,
-                      prize: str):
-
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("SELECT message_id, channel_id FROM Giveaway WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
-                re = await cursor.fetchall()
-
-        if winners >= 15:
-            message = await ctx.send(view=CV2("⚠️ Access Denied", "Cannot exceed more than 15 winners."))
-            await asyncio.sleep(5)
-            await message.delete()
-            return
-
-        g_list = [i[0] for i in re]
-        if len(g_list) >= 5:
-            message = await ctx.send(view=CV2("⚠️ Access Denied", "You can only host upto 5 giveaways in this Guild."))
-            await asyncio.sleep(5)
-            await message.delete()
-            return
-
-        converted = self.convert(time)
-        if converted / 60 >= 50400:
-            message = await ctx.send(view=CV2("⚠️ Access Denied", "Time cannot exceed 31 days!"))
-            await asyncio.sleep(5)
-            await message.delete()
-            return
-
-        if converted == -1:
-            message = await ctx.send(view=CV2("❌ Error", "Invalid time format"))
-            await asyncio.sleep(5)
-            await message.delete()
-            return
-        if converted == -2:
-            message = await ctx.send(view=CV2("❌ Error", "Invalid time format. Please provide the time in numbers."))
-            await asyncio.sleep(5)
-            await message.delete()
-            return
-
-        ends = (datetime.datetime.now().timestamp() + converted)
-
-        desc = (
-            f"{ARROWRED} Winner(s): **{winners}**\n"
-            f"{ARROWRED} Hosted by {ctx.author.mention}\n"
-            f"{ARROWRED} Ends <t:{round(ends)}:R> (<t:{round(ends)}:f>)\n\n"
-            f"{ARROWRED} React with {TADAA} to participate!"
+    @commands.group(name="giveaway", aliases=["gwy", "gw"], invoke_without_command=True)
+    @commands.check(check_giveaway_perms)
+    async def giveaway_group(self, ctx: Context):
+        """Shows the Giveaway commands and usage guide."""
+        embed = discord.Embed(
+            title="🎉 Giveaway System Guide",
+            description=(
+                f"**Main Commands:**\n"
+                f"• `{ctx.prefix}gstart <time> [winners] <prize>` — Start a giveaway\n"
+                f"• `{ctx.prefix}gend [message_id]` — End a giveaway immediately\n"
+                f"• `{ctx.prefix}greroll [message_id]` — Pick a new winner for an ended giveaway\n"
+                f"• `{ctx.prefix}glist` — List all active giveaways in this server\n\n"
+                f"**Usage Examples:**\n"
+                f"• `{ctx.prefix}gstart 10m 1 Discord Nitro` (10 minutes, 1 winner)\n"
+                f"• `{ctx.prefix}gstart 1h Discord Nitro` (1 hour, 1 winner)\n"
+                f"• `{ctx.prefix}gstart 2d 3 Steam Key` (2 days, 3 winners)\n"
+                f"• `{ctx.prefix}gend` (Reply to the giveaway message or run in same channel)\n\n"
+                f"**Supported Time Units:** `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks)"
+            ),
+            color=0xFF0000
         )
-        
-        view = CV2(f"{TADAA} {prize}", desc)
+        embed.set_footer(text=f"{BRAND_NAME} Giveaways • Run by {ctx.author.display_name}")
+        await ctx.send(embed=embed)
 
-        message = await ctx.send(f"{TADAA} **GIVEAWAY** {TADAA}", view=view)
-        try:
-           await ctx.message.delete()
-        except:
-            pass
+    @giveaway_group.command(name="start")
+    @commands.check(check_giveaway_perms)
+    async def giveaway_start_sub(self, ctx: Context, time_str: str = None, winners: typing.Optional[int] = None, *, prize: str = None):
+        await self.gstart_cmd(ctx, time_str=time_str, winners=winners, prize=prize)
 
-        async with aiosqlite.connect(db_path) as db:
+    @giveaway_group.command(name="end")
+    @commands.check(check_giveaway_perms)
+    async def giveaway_end_sub(self, ctx: Context, message_id: typing.Optional[int] = None):
+        await self.gend_cmd(ctx, message_id=message_id)
+
+    @giveaway_group.command(name="reroll")
+    @commands.check(check_giveaway_perms)
+    async def giveaway_reroll_sub(self, ctx: Context, message_id: typing.Optional[int] = None):
+        await self.greroll_cmd(ctx, message_id=message_id)
+
+    @giveaway_group.command(name="list")
+    @commands.check(check_giveaway_perms)
+    async def giveaway_list_sub(self, ctx: Context):
+        await self.glist_cmd(ctx)
+
+    @commands.command(name="gstart", aliases=["gwstart"])
+    @commands.check(check_giveaway_perms)
+    async def gstart_cmd(self, ctx: Context, time_str: str = None, winners: typing.Optional[int] = None, *, prize: str = None):
+        """Starts a new giveaway in the current channel."""
+        if not time_str or not prize:
+            embed = discord.Embed(
+                title="🎉 Giveaway Setup Guide",
+                description=(
+                    f"**Usage:** `{ctx.prefix}gstart <time> [winners] <prize>`\n"
+                    f"**Alias:** `{ctx.prefix}giveaway start <time> [winners] <prize>`\n\n"
+                    f"**Examples:**\n"
+                    f"• `{ctx.prefix}gstart 10m 1 Discord Nitro` (1 winner for 10 minutes)\n"
+                    f"• `{ctx.prefix}gstart 1h Discord Nitro` (Defaults to 1 winner)\n"
+                    f"• `{ctx.prefix}gstart 2d 3 Steam Key` (3 winners for 2 days)\n\n"
+                    f"**Supported Units:** `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks)"
+                ),
+                color=0xFF0000
+            )
+            embed.set_footer(text="Tip: You can reply or click the button to enter!")
+            return await ctx.send(embed=embed)
+
+        seconds = parse_time(time_str)
+        if not seconds:
+            return await ctx.send(f"{CROSS} Invalid time format `{time_str}`! Examples: `10m`, `1h`, `2d`, `1w`.")
+
+        if seconds > 31 * 86400:
+            return await ctx.send(f"{CROSS} Giveaway duration cannot exceed 31 days.")
+
+        if winners is None or winners < 1:
+            winners = 1
+
+        if winners > 25:
+            return await ctx.send(f"{CROSS} Number of winners cannot exceed 25.")
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT count(*) FROM Giveaway WHERE guild_id = ?", (ctx.guild.id,)) as cur:
+                count = (await cur.fetchone())[0]
+
+        if count >= 15:
+            return await ctx.send(f"{CROSS} You can only run up to 15 active giveaways simultaneously in this server.")
+
+        now = time.time()
+        ends_at = now + seconds
+
+        embed = discord.Embed(
+            title=f"🎉 {prize}",
+            description=(
+                f"Click the button below or react with 🎉 to participate!\n\n"
+                f"• **Winners:** `{winners}`\n"
+                f"• **Hosted by:** {ctx.author.mention}\n"
+                f"• **Ends:** <t:{int(ends_at)}:R> (<t:{int(ends_at)}:f>)"
+            ),
+            color=0xFF0000
+        )
+        embed.set_footer(text=f"{winners} Winner(s) • Ends")
+        embed.timestamp = datetime.datetime.fromtimestamp(ends_at, tz=datetime.timezone.utc)
+
+        view = GiveawayEnterView(self, count=0)
+        giveaway_msg = await ctx.send(content="🎉 **GIVEAWAY** 🎉", embed=embed, view=view)
+
+        async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "INSERT INTO Giveaway(guild_id, host_id, start_time, ends_at, prize, winners, message_id, channel_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                (ctx.guild.id, ctx.author.id, datetime.datetime.now(), ends, prize, winners, message.id, ctx.channel.id)
+                "INSERT INTO Giveaway (guild_id, host_id, start_time, ends_at, prize, winners, message_id, channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (ctx.guild.id, ctx.author.id, now, ends_at, prize, winners, giveaway_msg.id, ctx.channel.id)
             )
             await db.commit()
 
-        await message.add_reaction(TADAA)
-
-    @commands.Cog.listener("on_message_delete")
-    async def GiveawayMessageDelete(self, message):
-        if not message.guild or message.author != self.bot.user:
-            return
-
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("SELECT message_id FROM Giveaway WHERE guild_id = ? AND message_id = ?", (message.guild.id, message.id)) as cursor:
-                re = await cursor.fetchone()
-
-            if re is not None:
-                await db.execute("DELETE FROM Giveaway WHERE channel_id = ? AND message_id = ? AND guild_id = ?", (message.channel.id, message.id, message.guild.id))
-                await db.commit()
-                print(f"Giveaway message deleted in {message.guild.name} - {message.guild.id}")
-
-    @commands.hybrid_command(name="gend", description="Ends a giveaway before its ending time.", help="Ends a giveaway before its ending time.")
-    @blacklist_check()
-    @ignore_check()
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.has_guild_permissions(manage_guild=True)
-    async def gend(self, ctx, message_id = None):
-        target_message_id = None
-        if message_id:
-            try:
-                target_message_id = int(message_id)
-            except ValueError:
-                message = await ctx.send(view=CV2("⚠️ Access Denied", "Invalid message ID provided."))
-                await asyncio.sleep(5)
-                await message.delete()
-                return
-        elif ctx.message.reference and ctx.message.reference.resolved:
-            target_message_id = ctx.message.reference.resolved.id
-
-        if not target_message_id:
-            await ctx.send("Please reply to the giveaway message or provide the giveaway ID.")
-            return
-
-        current_time = datetime.datetime.now().timestamp()
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute('SELECT ends_at, guild_id, message_id, host_id, winners, prize, channel_id FROM Giveaway WHERE message_id = ?', (target_message_id,)) as cursor:
-                re = await cursor.fetchone()
-
-            if re is None:
-                message = await ctx.send(view=CV2("❌ Error", "The giveaway was not found."))
-                await asyncio.sleep(5)
-                with suppress(Exception):
-                    await message.delete()
-                return
-
-            ch = self.bot.get_channel(int(re[6])) or ctx.channel
-            try:
-                msg = await ch.fetch_message(target_message_id)
-            except Exception:
-                await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (target_message_id, ctx.guild.id))
-                await db.commit()
-                await ctx.send("Giveaway message could not be found. Cleared from database.")
-                return
-
-            users = []
-            if msg.reactions:
-                users = [i.id async for i in msg.reactions[0].users()]
-            if self.bot.user.id in users:
-                users.remove(self.bot.user.id)
-
-            if len(users) < 1:
-                await ctx.send(f"{TICK} Successfully Ended the giveaway in <#{int(re[6])}>")
-                with suppress(Exception):
-                    await msg.reply(f"No one won the **{re[5]}** giveaway, due to not enough participants.")
-                await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (msg.id, msg.guild.id))
-                await db.commit()
-                return
-
-            winners_count = min(len(users), int(re[4]))
-            winner = ', '.join(f'<@!{i}>' for i in random.sample(users, k=winners_count))
-
-            desc = f"Ended at <t:{int(current_time)}:R>\nHosted by <@{int(re[3])}>\nWinner(s): {winner}"
-            view = CV2(f"🎁 {re[5]}", desc)
-
-            with suppress(Exception):
-                await msg.edit(content="🎁 **GIVEAWAY ENDED** 🎁", view=view)
-
-            if int(ctx.channel.id) != int(re[6]):
-                await ctx.send(f"{TADAA} Successfully ended the giveaway in <#{int(re[6])}>")
-
-            with suppress(Exception):
-                await msg.reply(f" Congrats {winner}, you won **{re[5]}!**, Hosted by <@{int(re[3])}>")
-            await db.execute("DELETE FROM Giveaway WHERE message_id = ? AND guild_id = ?", (msg.id, msg.guild.id))
-            await db.commit()
-
-    @commands.hybrid_command(description="Rerolls a giveaway on replying the giveaway message.", help="Rerolls a giveaway on replying the giveaway message.")
-    @blacklist_check()
-    @ignore_check()
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.has_guild_permissions(manage_guild=True)
-    async def greroll(self, ctx, message_id: typing.Optional[int] = None):
-        if not ctx.message.reference:
-            message = await ctx.reply("Reply to this command with the Giveaway Ended message to reroll.")
-            await asyncio.sleep(5)
-            with suppress(Exception):
-                await message.delete()
-            return
-
-        ref_id = ctx.message.reference.resolved.id if ctx.message.reference.resolved else ctx.message.reference.message_id
         try:
-            message = await ctx.fetch_message(ref_id)
+            await giveaway_msg.add_reaction("🎉")
         except Exception:
-            return await ctx.send("Could not find referenced message.")
+            pass
 
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("SELECT message_id FROM Giveaway WHERE message_id = ?", (message.id,)) as cursor:
-                re = await cursor.fetchone()
+        with suppress(Exception):
+            await ctx.message.delete()
 
-        if re is not None:
-            msg = await ctx.send(view=CV2("⚠️ Access Denied", "The giveaway is currently running. Please use the `gend` command instead to end the giveaway."))
-            await asyncio.sleep(5)
-            await msg.delete()
-            return
+    @commands.command(name="gend", aliases=["gwend"])
+    @commands.check(check_giveaway_perms)
+    async def gend_cmd(self, ctx: Context, message_id: typing.Optional[int] = None):
+        """Ends a running giveaway early."""
+        target_id = message_id
+        if not target_id and ctx.message.reference:
+            target_id = ctx.message.reference.resolved.id if ctx.message.reference.resolved else ctx.message.reference.message_id
 
-        users = []
-        if message.reactions:
-            users = [i.id async for i in message.reactions[0].users()]
-        if self.bot.user.id in users:
-            users.remove(self.bot.user.id)
+        async with aiosqlite.connect(self.db_path) as db:
+            if target_id:
+                async with db.execute("SELECT ends_at, guild_id, message_id, host_id, winners, prize, channel_id FROM Giveaway WHERE message_id = ?", (target_id,)) as cur:
+                    gw = await cur.fetchone()
+            else:
+                async with db.execute(
+                    "SELECT ends_at, guild_id, message_id, host_id, winners, prize, channel_id FROM Giveaway WHERE channel_id = ? ORDER BY ends_at ASC LIMIT 1",
+                    (ctx.channel.id,)
+                ) as cur:
+                    gw = await cur.fetchone()
 
-        if len(users) < 1:
-            await message.reply("No one won the giveaway, due to not enough participants.")
-            return
+                if not gw:
+                    async with db.execute(
+                        "SELECT ends_at, guild_id, message_id, host_id, winners, prize, channel_id FROM Giveaway WHERE guild_id = ? ORDER BY ends_at ASC LIMIT 1",
+                        (ctx.guild.id,)
+                    ) as cur:
+                        gw = await cur.fetchone()
 
-        winners = random.sample(users, k=1)
-        await message.reply(f" The new winner is " + ", ".join(f"<@{i}>" for i in winners) + ". Congratulations!")
+        if not gw:
+            return await ctx.send(f"{CROSS} No active giveaway found. Please specify the giveaway message ID or reply to the giveaway message with `{ctx.prefix}gend`.")
 
-    def convert(self, time):
-        pos = ["s", "m", "h", "d"]
-        time_dict = {"s": 1, "m": 60, "h": 3600, "d": 86400, "f": 259200}
+        await ctx.send(f"{TICK} Ending giveaway for **{gw[5]}**...")
+        await self.end_giveaway(gw)
 
-        unit = time[-1]
-        if unit not in pos:
-            return -1
+    @commands.command(name="greroll", aliases=["gwreroll"])
+    @commands.check(check_giveaway_perms)
+    async def greroll_cmd(self, ctx: Context, message_id: typing.Optional[int] = None):
+        """Rerolls a giveaway to pick a new winner."""
+        target_id = message_id
+        if not target_id and ctx.message.reference:
+            target_id = ctx.message.reference.resolved.id if ctx.message.reference.resolved else ctx.message.reference.message_id
+
+        if not target_id:
+            return await ctx.send(f"{CROSS} Please provide the giveaway message ID or reply to the giveaway message with `{ctx.prefix}greroll`.")
 
         try:
-            val = int(time[:-1])
-        except ValueError:
-            return -2
+            message = await ctx.channel.fetch_message(target_id)
+        except Exception:
+            return await ctx.send(f"{CROSS} Could not find giveaway message `{target_id}` in this channel.")
 
-        return val * time_dict[unit]
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT message_id FROM Giveaway WHERE message_id = ?", (target_id,)) as cur:
+                if await cur.fetchone():
+                    return await ctx.send(f"{CROSS} This giveaway is currently running! Use `{ctx.prefix}gend` to end it first.")
+
+        participants = await self.get_participants(message)
+        if not participants:
+            return await ctx.send(f"{CROSS} No participants found to reroll this giveaway.")
+
+        new_winner_id = random.choice(participants)
+        await message.reply(f"🎉 **GIVEAWAY REROLL:** The new winner is <@{new_winner_id}>! Congratulations!")
+
+    @commands.command(name="glist", aliases=["gwlist"])
+    @commands.check(check_giveaway_perms)
+    async def glist_cmd(self, ctx: Context):
+        """Lists all active giveaways in the server."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT message_id, channel_id, prize, winners, ends_at, host_id FROM Giveaway WHERE guild_id = ? ORDER BY ends_at ASC",
+                (ctx.guild.id,)
+            ) as cur:
+                rows = await cur.fetchall()
+
+        if not rows:
+            embed = discord.Embed(
+                title=f"🎉 Active Giveaways — {ctx.guild.name}",
+                description="There are currently no active giveaways running in this server.",
+                color=0xFF0000
+            )
+            return await ctx.send(embed=embed)
+
+        embed = discord.Embed(
+            title=f"🎉 Active Giveaways — {ctx.guild.name} ({len(rows)})",
+            color=0xFF0000
+        )
+        for msg_id, ch_id, prize, winners, ends_at, host_id in rows:
+            embed.add_field(
+                name=f"🎁 {prize}",
+                value=(
+                    f"• **Channel:** <#{ch_id}>\n"
+                    f"• **Winners:** `{winners}`\n"
+                    f"• **Hosted by:** <@{host_id}>\n"
+                    f"• **Ends:** <t:{int(ends_at)}:R> (<t:{int(ends_at)}:f>)\n"
+                    f"• **Jump:** [View Giveaway](https://discord.com/channels/{ctx.guild.id}/{ch_id}/{msg_id})"
+                ),
+                inline=False
+            )
+        embed.set_footer(text=f"Requested by {ctx.author.display_name}")
+        await ctx.send(embed=embed)
+
+    async def cog_command_error(self, ctx: Context, error):
+        if isinstance(error, commands.CheckFailure):
+            return await ctx.send(f"{CROSS} You need **Manage Server**, **Manage Messages**, or a **Giveaways** role to use this command!")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            return await ctx.send(f"{CROSS} Missing argument `{error.param.name}`. Run `{ctx.prefix}giveaway` for help.")
+        print(f"[Giveaway] Command error in {ctx.command}: {error}")
 
 
-    @commands.hybrid_command(name="glist", description="Lists all ongoing giveaways.")
-    @blacklist_check()
-    @ignore_check()
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    @commands.has_guild_permissions(manage_guild=True)
-    async def glist(self, ctx):
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("SELECT prize, ends_at, winners, message_id FROM Giveaway WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
-                giveaways = await cursor.fetchall()
-
-        if not giveaways:
-            await ctx.send(view=CV2("Ongoing Giveaways", "No ongoing giveaways."))
-            return
-
-        desc = ""
-        for giveaway in giveaways:
-            prize, ends_at, winners, message_id = giveaway
-            desc += f"**{prize}**\nEnds: <t:{int(ends_at)}:R> (<t:{int(ends_at)}:f>)\nWinners: {winners}\n[Jump to Message](https://discord.com/channels/{ctx.guild.id}/{ctx.channel.id}/{message_id})\n\n"
-
-        await ctx.send(view=CV2("Ongoing Giveaways", desc))
-
-async def setup(bot):
+async def setup(bot: zyrox):
     await bot.add_cog(Giveaway(bot))
