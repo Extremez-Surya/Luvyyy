@@ -175,11 +175,15 @@ class HelpCommand(commands.HelpCommand):
     )
     
     view = vhelp.View(mapping=mapping, ctx=self.context, homeembed=embed, ui=2)
+    help_embed = view.get_embed()
+    if not help_embed or (not help_embed.title and not help_embed.description and not help_embed.fields):
+      help_embed = embed
+
     try:
-      msg = await ctx.reply(embed=view.get_embed(), view=view, mention_author=False)
+      msg = await ctx.reply(embed=help_embed, view=view, mention_author=False)
       view.message = msg
     except Exception:
-      msg = await ctx.send(embed=view.get_embed(), view=view)
+      msg = await ctx.send(embed=help_embed, view=view)
       view.message = msg
 
   async def send_command_help(self, command):
@@ -252,6 +256,9 @@ class HelpCommand(commands.HelpCommand):
         for cmd in group.commands
       ]
 
+    if not entries:
+      entries = [("No Subcommands", "This group command has no available subcommands.\n\u200b")]
+
     count = len(group.commands)
 
     paginator = Paginator(
@@ -283,6 +290,10 @@ class HelpCommand(commands.HelpCommand):
       f"-# Description : {cmd.short_doc if cmd.short_doc else ''}"
       f"\n\u200b",
     ) for cmd in cog.get_commands()]
+
+    if not entries:
+      entries = [("No Commands", "This category has no available commands.\n\u200b")]
+
     paginator = Paginator(source=FieldPagePaginator(
       entries=entries,
       title=f"{BRAND_NAME}'s {cog.qualified_name.title()} ({len(cog.get_commands())})",

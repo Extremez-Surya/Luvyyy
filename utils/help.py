@@ -45,6 +45,7 @@ class View(discord.ui.View):
         super().__init__(timeout=180)
         self.mapping = mapping
         self.ctx = ctx
+        self.homeembed = homeembed
         self.index = 0
         self.current_page = 0
         self.ui = ui
@@ -54,14 +55,24 @@ class View(discord.ui.View):
         self._rebuild()
 
     def get_embed(self) -> discord.Embed:
+        if self.index == 0 and hasattr(self, 'homeembed') and self.homeembed:
+            return self.homeembed
+
         page = self.pages[self.index]
         embed = discord.Embed(
-            title=page.get('title') or None,
-            description=page.get('description') or None,
+            title=page.get('title') or "Commands",
+            description=page.get('description') or "Commands in this category:",
             color=0xFF0000
         )
-        for name, value in page.get('fields', []):
-            embed.add_field(name=name, value=value, inline=False)
+        fields = page.get('fields', [])
+        for item in fields:
+            if isinstance(item, dict):
+                embed.add_field(name=item.get('name', 'Command'), value=item.get('value', 'No info'), inline=item.get('inline', False))
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                embed.add_field(name=str(item[0]), value=str(item[1]), inline=False)
+
+        if not embed.title and not embed.description and not embed.fields:
+            embed.description = "Commands in this category."
 
         footer_text = f"• Help page {self.index + 1}/{self.total_pages} | Requested by: {self.ctx.author.display_name} | Developed by Vinay Kumar (!Alone💔)"
         embed.set_footer(text=footer_text)
@@ -222,7 +233,7 @@ class View(discord.ui.View):
 
                 pages.append({
                     'title': f"{emoji} {original_label}",
-                    'description': '',
+                    'description': description or 'Commands in this category:',
                     'fields': fields,
                     'footer': None
                 })

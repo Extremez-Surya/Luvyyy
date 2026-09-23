@@ -63,6 +63,7 @@ class zyrox(commands.AutoShardedBot):
     async def setup_hook(self):
         await self.load_extensions()
         self.status_task.start()
+        self.auto_backup_task.start()
 
     async def load_extensions(self):
         for extension in extensions:
@@ -106,6 +107,18 @@ class zyrox(commands.AutoShardedBot):
 
     @status_task.before_loop
     async def before_status_task(self):
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=30)
+    async def auto_backup_task(self):
+        try:
+            from utils.persistence import upload_backup_to_discord
+            await upload_backup_to_discord(self, reason="scheduled_30m")
+        except Exception:
+            pass
+
+    @auto_backup_task.before_loop
+    async def before_auto_backup_task(self):
         await self.wait_until_ready()
 
     async def send_raw(self, channel_id: int, content: str, **kwargs) -> typing.Optional[discord.Message]:
