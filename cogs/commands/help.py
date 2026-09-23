@@ -78,16 +78,16 @@ class HelpCommand(commands.HelpCommand):
     cmds = (str(cmd) for cmd in self.context.bot.walk_commands())
     matches = get_close_matches(string, cmds)
 
-    embed = CV2Embed(
+    embed = discord.Embed(
         title=f"{BotName} Helper",
         description=f">>> **Ops! Command not found with the name** `{string}`.",
         color=0xFF0000
     )
 
     try:
-        await ctx.reply(content=f"**{BotName} Helper**", view=embed, mention_author=True)
+        await ctx.reply(embed=embed, mention_author=True)
     except Exception:
-        await ctx.send(content=f"**{BotName} Helper**", view=embed)
+        await ctx.send(embed=embed)
 
   async def send_bot_help(self, mapping):
     ctx = self.context
@@ -102,12 +102,16 @@ class HelpCommand(commands.HelpCommand):
       return
 
     # Show loading message
+    loading_embed = discord.Embed(
+        description=f"{LOADINGRED} Loading help Menu...",
+        color=0xFF0000
+    )
     loading_msg = None
     try:
-      loading_msg = await ctx.reply(f"{LOADINGRED} Loading help menu...")
+      loading_msg = await ctx.reply(embed=loading_embed, mention_author=False)
     except Exception:
       with suppress(Exception):
-        loading_msg = await ctx.send(f"{LOADINGRED} Loading help menu...")
+        loading_msg = await ctx.send(embed=loading_embed)
 
     await asyncio.sleep(1)
 
@@ -119,7 +123,7 @@ class HelpCommand(commands.HelpCommand):
     prefix = data["prefix"]
     filtered = await self.filter_commands(self.context.bot.walk_commands(), sort=True)
 
-    embed = CV2Embed(
+    embed = discord.Embed(
         description=(
          f"**{ARROWRED} __Start {BotName} Today__**\n"        
          f"**{ZARROW} Type {prefix}antinuke enable**\n"
@@ -144,7 +148,8 @@ class HelpCommand(commands.HelpCommand):
               f" {SEED} `»` Welcomer\n"  
               f" {ZTADA} `»` Giveaway\n"
               f" {TICKET} `»` Ticket {NEW}\n"
-              f" {ZPEOPLE} `»` Invite Tracker {NEW}\n"
+              f" {ZPEOPLE} `»` Invite Tracker {NEW}\n",
+        inline=False
     )
     
     embed.add_field(
@@ -162,7 +167,8 @@ class HelpCommand(commands.HelpCommand):
               f" {MINECRAFT} `»` Minecraft {NEW}\n"
               f" {MESSAGE} `»` Joindm {NEW}\n"
               f" {ZCIRCLE} `»` Birthday {NEW}\n"
-              f" {ZCIRCLE_ALT1} `»` Customrole\n"           
+              f" {ZCIRCLE_ALT1} `»` Customrole\n",
+        inline=False
     )
 
     embed.set_footer(
@@ -171,21 +177,11 @@ class HelpCommand(commands.HelpCommand):
     
     view = vhelp.View(mapping=mapping, ctx=self.context, homeembed=embed, ui=2)
     try:
-      await ctx.reply(content=f"**{BotName} Help Menu**", view=view)
+      msg = await ctx.reply(embed=view.get_embed(), view=view, mention_author=False)
+      view.message = msg
     except Exception:
-      try:
-        await ctx.send(content=f"**{BotName} Help Menu**", view=view)
-      except Exception:
-        # Fallback to standard embed
-        std_embed = discord.Embed(
-            title=f"{BotName} Help Menu",
-            description=f"**Server Prefix:** `{prefix}`\nType `{prefix}help <command>` for command details.",
-            color=0xFF0000
-        )
-        std_embed.add_field(name="Main Features", value="Security, Automod, Utility, Music, Moderation, Welcomer, Giveaway, Ticket, Invite Tracker", inline=False)
-        std_embed.add_field(name="Extra Features", value="Logging, Vanityroles, Counting, J2C, AI, Boost, Leveling, Sticky, Verification, Minecraft, Birthday", inline=False)
-        std_embed.set_footer(text=f"Requested By {self.context.author}")
-        await ctx.send(embed=std_embed)
+      msg = await ctx.send(embed=view.get_embed(), view=view)
+      view.message = msg
 
   async def send_command_help(self, command):
     ctx = self.context
@@ -200,7 +196,7 @@ class HelpCommand(commands.HelpCommand):
       return
 
     zyrox = f">>> {command.help}" if command.help else '>>> No Help Provided...'
-    embed = CV2Embed(
+    embed = discord.Embed(
         description=f"""{zyrox}""",
         color=color)
     alias = ' & '.join(command.aliases)
@@ -209,25 +205,14 @@ class HelpCommand(commands.HelpCommand):
                       value=f"```{alias}```" if command.aliases else "No Alt cmd",
                       inline=False)
     embed.add_field(name="**Usage**",
-                      value=f"```{self.context.prefix}{command.signature}```\n")
+                      value=f"```{self.context.prefix}{command.signature}```\n",
+                      inline=False)
     embed.set_author(name=f"{command.qualified_name.title()} Command")
     embed.set_footer(text="<[] = optional | < > = required • Use Prefix Before Commands.")
     try:
-      await self.context.reply(content=f"**{command.qualified_name.title()} Command**", view=embed, mention_author=False)
+      await self.context.reply(embed=embed, mention_author=False)
     except Exception:
-      try:
-        await self.context.send(content=f"**{command.qualified_name.title()} Command**", view=embed)
-      except Exception:
-        std_embed = discord.Embed(
-            title=f"{command.qualified_name.title()} Command",
-            description=zyrox,
-            color=color
-        )
-        if command.aliases:
-            std_embed.add_field(name="Alt cmd", value=f"```{alias}```", inline=False)
-        std_embed.add_field(name="Usage", value=f"```{self.context.prefix}{command.signature}```", inline=False)
-        std_embed.set_footer(text="<[] = optional | < > = required")
-        await self.context.send(embed=std_embed)
+      await self.context.send(embed=embed)
 
   def get_command_signature(self, command: commands.Command) -> str:
     parent = command.full_parent_name
