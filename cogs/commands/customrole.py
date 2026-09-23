@@ -90,7 +90,7 @@ class Customrole(commands.Cog):
                     role = context.guild.get_role(role_id)
 
                     if reqrole:
-                        if context.author == context.guild.owner or reqrole in context.author.roles:
+                        if context.author == context.guild.owner or is_bot_owner(context.author.id) or reqrole in context.author.roles:
                             if role:
                                 if role not in member.roles:
                                     await self.add_role2(role=role_id, member=member)
@@ -179,7 +179,7 @@ class Customrole(commands.Cog):
     @commands.has_permissions(administrator=True)
     @app_commands.describe(role="Role to be added")
     async def staff(self, context: Context, role: discord.Role) -> None:
-        if context.author == context.guild.owner or context.author.top_role.position > context.guild.me.top_role.position:
+        if context.author == context.guild.owner or is_bot_owner(context.author.id) or context.author.top_role.position > context.guild.me.top_role.position:
             await self.update_role_data(context.guild.id, 'staff', role.id)
             await context.reply(view=CV2(f"{TICK} Success", f"Added {role.mention} to `Staff` Role\n\n__**How to Use?**__\nUse `staff <user>` Command to **Add {role.mention}** role to User & use again to the same user to **Remove role**."))
         else:
@@ -194,7 +194,7 @@ class Customrole(commands.Cog):
     @commands.has_permissions(administrator=True)
     @app_commands.describe(role="Role to be added")
     async def girl(self, context: Context, role: discord.Role) -> None:
-        if context.author == context.guild.owner or context.author.top_role.position > context.guild.me.top_role.position:
+        if context.author == context.guild.owner or is_bot_owner(context.author.id) or context.author.top_role.position > context.guild.me.top_role.position:
             await self.update_role_data(context.guild.id, 'girl', role.id)
             await context.reply(view=CV2(f"{TICK} Success", f"Added {role.mention} to `Girl` Role\n\n__**How to Use?**__\nUse `girl <user>` Command to **Add {role.mention}** role to User & use again to the same user to **Remove role**."))
         else:
@@ -209,7 +209,7 @@ class Customrole(commands.Cog):
     @commands.has_permissions(administrator=True)
     @app_commands.describe(role="Role to be added")
     async def vip(self, context: Context, role: discord.Role) -> None:
-        if context.author == context.guild.owner or context.author.top_role.position > context.guild.me.top_role.position:
+        if context.author == context.guild.owner or is_bot_owner(context.author.id) or context.author.top_role.position > context.guild.me.top_role.position:
             await self.update_role_data(context.guild.id, 'vip', role.id)
             await context.reply(view=CV2(f"{TICK} Success", f"Added {role.mention} to `VIP` Role\n\n__**How to Use?**__\nUse `vip <user>` Command to **Add {role.mention}** role to User & use again to the same user to **Remove role**."))
         else:
@@ -224,7 +224,7 @@ class Customrole(commands.Cog):
     @commands.has_permissions(administrator=True)
     @app_commands.describe(role="Role to be added")
     async def guest(self, context: Context, role: discord.Role) -> None:
-        if context.author == context.guild.owner or context.author.top_role.position > context.guild.me.top_role.position:
+        if context.author == context.guild.owner or is_bot_owner(context.author.id) or context.author.top_role.position > context.guild.me.top_role.position:
             await self.update_role_data(context.guild.id, 'guest', role.id)
             await context.reply(view=CV2(f"{TICK} Success", f"Added {role.mention} to `Guest` Role\n\n__**How to Use?**__\nUse `guest <user>` Command to **Add {role.mention}** role to User & use again to the same user to **Remove role**."))
         else:
@@ -239,7 +239,7 @@ class Customrole(commands.Cog):
     @commands.has_permissions(administrator=True)
     @app_commands.describe(role="Role to be added")
     async def friend(self, context: Context, role: discord.Role) -> None:
-        if context.author == context.guild.owner or context.author.top_role.position > context.guild.me.top_role.position:
+        if context.author == context.guild.owner or is_bot_owner(context.author.id) or context.author.top_role.position > context.guild.me.top_role.position:
             await self.update_role_data(context.guild.id, 'frnd', role.id)
             await context.reply(view=CV2(f"{TICK} Success", f"Added {role.mention} to `Friend` Role\n\n__**How to Use?**__\nUse `friend <user>` Command to **Add {role.mention}** role to User & use again to the same user to **Remove role**."))
         else:
@@ -254,7 +254,7 @@ class Customrole(commands.Cog):
     @commands.has_permissions(administrator=True)
     @app_commands.describe(role="Role to be added")
     async def req_role(self, context: Context, role: discord.Role) -> None:
-        if context.author == context.guild.owner or context.author.top_role.position > context.guild.me.top_role.position:
+        if context.author == context.guild.owner or is_bot_owner(context.author.id) or context.author.top_role.position > context.guild.me.top_role.position:
             await self.update_role_data(context.guild.id, 'reqrole', role.id)
             await context.reply(view=CV2(f"{TICK} Success", f"Added {role.mention} for Required role to run custom role commands in {context.guild.name}"))
         else:
@@ -392,7 +392,7 @@ class Customrole(commands.Cog):
     @commands.cooldown(1, 4, commands.BucketType.user)
     @commands.has_permissions(administrator=True)
     async def reset(self, context: Context) -> None:
-        if context.author == context.guild.owner or context.author.top_role.position > context.guild.me.top_role.position:
+        if context.author == context.guild.owner or is_bot_owner(context.author.id) or context.author.top_role.position > context.guild.me.top_role.position:
             removed_roles = []
             role_data = await self.fetch_role_data(context.guild.id)
             if role_data:

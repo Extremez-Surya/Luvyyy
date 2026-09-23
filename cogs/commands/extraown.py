@@ -19,7 +19,7 @@ from discord.ui import LayoutView, TextDisplay, Separator, Container, ActionRow,
 import aiosqlite
 from utils.Tools import *
 from utils.cv2 import CV2, build_container
-from utils.config import OWNER_IDS_STR
+from utils.config import OWNER_IDS_STR, is_bot_owner, OWNER_IDS
 
 
 
@@ -104,11 +104,11 @@ class Extraowner(commands.Cog):
     async def extraowner(self, ctx, option: str = None, user: discord.Member = None):
         guild_id = ctx.guild.id
 
-        if ctx.guild.member_count < 2:
+        is_bypass = is_bot_owner(ctx.author.id)
+        if ctx.guild.member_count < 2 and not is_bypass:
             return await ctx.send(view=CV2(f"{CROSS} Error", "Your Server Doesn't Meet My 30 Member Criteria"))
 
-        Ray = OWNER_IDS_STR
-        if ctx.author.id != ctx.guild.owner_id and str(ctx.author.id) not in Ray:
+        if ctx.author.id != ctx.guild.owner_id and not is_bypass:
             return await ctx.send(view=CV2(f"{ZWARNING} Access Denied", "Only Server Owner Can Run This Command"))
 
         if option is None:

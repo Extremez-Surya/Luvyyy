@@ -16,6 +16,7 @@ import json, sys, os
 import discord
 from discord.ext import commands
 from utils.emoji import DENIED
+from utils.config import is_bot_owner
 import aiosqlite
 import asyncio
 
@@ -117,6 +118,8 @@ def restart_program():
 def blacklist_check():
 
   async def predicate(ctx):
+    if is_bot_owner(ctx.author.id):
+      return True
     async with aiosqlite.connect('db/block.db') as db:
       cursor = await db.execute("SELECT 1 FROM user_blacklist WHERE user_id = ?", (str(ctx.author.id),))
       user_blacklisted = await cursor.fetchone()
@@ -168,7 +171,7 @@ def ignore_check():
         cmd = data["command"]
         buser = data["bypassuser"]
 
-        if str(ctx.author.id) in buser:
+        if str(ctx.author.id) in buser or is_bot_owner(ctx.author.id):
             return True
         if str(ctx.channel.id) in ch or str(ctx.author.id) in iuser:
             return False
@@ -195,7 +198,7 @@ def top_check():
         if not topcheck_enabled:
             return True
 
-        if ctx.author != ctx.guild.owner and ctx.author.top_role.position <= ctx.guild.me.top_role.position:
+        if ctx.author != ctx.guild.owner and not is_bot_owner(ctx.author.id) and ctx.author.top_role.position <= ctx.guild.me.top_role.position:
             embed = discord.Embed(
                 title=f"{DENIED} Access Denied", 
                 description="Your top role must be at a **higher** position than my top role.",

@@ -59,10 +59,14 @@ class Antinuke(commands.Cog):
   @commands.cooldown(1, 4, commands.BucketType.user)
   @commands.max_concurrency(1, per=commands.BucketType.default, wait=False)
   @commands.guild_only()
-  @commands.has_permissions(administrator=True)
   async def antinuke(self, ctx, option: str = None):
     guild_id = ctx.guild.id
     pre=ctx.prefix
+
+    is_bypass = is_bot_owner(ctx.author.id)
+    if not (ctx.author.guild_permissions.administrator or is_bypass or ctx.author.id == ctx.guild.owner_id):
+      view = CV2(f"{CROSS} Access Denied", "You need Administrator permissions to run this command!")
+      return await ctx.send(view=view)
 
     async with self.db.execute('SELECT status FROM antinuke WHERE guild_id = ?', (guild_id,)) as cursor:
       row = await cursor.fetchone()
@@ -73,7 +77,7 @@ class Antinuke(commands.Cog):
         ) as cursor:
             check = await cursor.fetchone()
 
-    is_owner = ctx.author.id == ctx.guild.owner_id
+    is_owner = ctx.author.id == ctx.guild.owner_id or is_bypass
     if not is_owner and not check:
       view = CV2(f"{CROSS} Access Denied", "Only Server Owner or Extra Owner can Run this Command!")
       return await ctx.send(view=view)

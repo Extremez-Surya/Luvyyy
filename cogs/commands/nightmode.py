@@ -19,7 +19,7 @@ import os
 from utils.Tools import *
 from utils.cv2 import CV2
 from discord.ui import TextDisplay, Separator, ActionRow, LayoutView, Container
-from utils.config import OWNER_IDS_STR
+from utils.config import OWNER_IDS_STR, is_bot_owner, OWNER_IDS
 
 # Database setup
 db_folder = "db"
@@ -75,21 +75,24 @@ class Nightmode(commands.Cog):
         await ctx.send(view=view)
 
     @nightmode.command(name="enable", help="Enable nightmode")
-    @commands.has_permissions(administrator=True)
     @blacklist_check()
     @ignore_check()
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def enable_nightmode(self, ctx):
-        if ctx.guild.member_count < 50:
+        is_bypass = is_bot_owner(ctx.author.id)
+        if not (ctx.author.guild_permissions.administrator or is_bypass or ctx.author.id == ctx.guild.owner_id):
+            return await ctx.send(view=CV2("Access Denied", "You need Administrator permissions to run this command!"))
+
+        if ctx.guild.member_count < 50 and not is_bypass:
             view = CV2(
                 "Access Denied",
                 "Your Server Doesn't Meet My 50 Member Criteria",
             )
             return await ctx.send(view=view)
 
-        own = ctx.author.id == ctx.guild.owner_id
+        own = ctx.author.id == ctx.guild.owner_id or is_bypass
         check = await self.is_extra_owner(ctx.author, ctx.guild)
-        if not own and not check and ctx.author.id not in self.ricky:
+        if not own and not check:
             view = CV2(
                 "Access Denied",
                 "Only Server Owner Or Extraowner Can Run This Command.!",
@@ -99,7 +102,6 @@ class Nightmode(commands.Cog):
         if (
             not own
             and not (ctx.guild.me.top_role.position <= ctx.author.top_role.position)
-            and ctx.author.id not in self.ricky
         ):
             view = CV2(
                 "Access Denied",
@@ -159,21 +161,24 @@ class Nightmode(commands.Cog):
         await ctx.send(view=view)
 
     @nightmode.command(name="disable", help="Disable nightmode")
-    @commands.has_permissions(administrator=True)
     @blacklist_check()
     @ignore_check()
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def disable_nightmode(self, ctx):
-        if ctx.guild.member_count < 50:
+        is_bypass = is_bot_owner(ctx.author.id)
+        if not (ctx.author.guild_permissions.administrator or is_bypass or ctx.author.id == ctx.guild.owner_id):
+            return await ctx.send(view=CV2("Access Denied", "You need Administrator permissions to run this command!"))
+
+        if ctx.guild.member_count < 50 and not is_bypass:
             view = CV2(
                 "Access Denied",
                 "Your Server Doesn't Meet My 50 Member Criteria",
             )
             return await ctx.send(view=view)
 
-        own = ctx.author.id == ctx.guild.owner_id
+        own = ctx.author.id == ctx.guild.owner_id or is_bypass
         check = await self.is_extra_owner(ctx.author, ctx.guild)
-        if not own and not check and ctx.author.id not in self.ricky:
+        if not own and not check:
             view = CV2(
                 "Access Denied",
                 "Only Server Owner Or Extraowner Can Run This Command.!",
@@ -183,7 +188,6 @@ class Nightmode(commands.Cog):
         if (
             not own
             and not (ctx.guild.me.top_role.position <= ctx.author.top_role.position)
-            and ctx.author.id not in self.ricky
         ):
             view = CV2(
                 "Access Denied",

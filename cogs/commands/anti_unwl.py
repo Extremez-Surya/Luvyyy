@@ -19,6 +19,7 @@ from discord.ui import LayoutView, TextDisplay, Separator, Container
 import aiosqlite
 from utils.Tools import *
 from utils.cv2 import CV2, build_container
+from utils.config import is_bot_owner, OWNER_IDS
 
 
 
@@ -34,14 +35,17 @@ class Unwhitelist(commands.Cog):
         self.db = await aiosqlite.connect('db/anti.db')
 
     @commands.hybrid_command(name='unwhitelist', aliases=['unwl'], help="Unwhitelist a user from antinuke")
-    @commands.has_permissions(administrator=True)
     @blacklist_check()
     @ignore_check()
     @commands.cooldown(1, 10, commands.BucketType.user)
     @commands.max_concurrency(1, per=commands.BucketType.default, wait=False)
     @commands.guild_only()
     async def unwhitelist(self, ctx, member: discord.Member = None):
-        if ctx.guild.member_count < 2:
+        is_bypass = is_bot_owner(ctx.author.id)
+        if not (ctx.author.guild_permissions.administrator or is_bypass or ctx.author.id == ctx.guild.owner_id):
+            return await ctx.send(view=CV2(f"{CROSS} Access Denied", "You need Administrator permissions to run this command!"))
+
+        if ctx.guild.member_count < 2 and not is_bypass:
             view = CV2(f"{CROSS} Error", "Your Server Doesn't Meet My 30 Member Criteria")
             return await ctx.send(view=view)
 
@@ -57,7 +61,7 @@ class Unwhitelist(commands.Cog):
         ) as cursor:
             antinuke = await cursor.fetchone()
 
-        is_owner = ctx.author.id == ctx.guild.owner_id
+        is_owner = ctx.author.id == ctx.guild.owner_id or is_bypass
         if not is_owner and not check:
             view = CV2(f"{CROSS} Access Denied", "Only Server Owner or Extra Owner can Run this Command!")
             return await ctx.send(view=view)
