@@ -59,20 +59,6 @@ class zyrox(commands.AutoShardedBot):
         self.status_index = 0
         self.status_list = []
 
-    @property
-    def loop(self):
-        try:
-            return asyncio.get_running_loop()
-        except RuntimeError:
-            try:
-                return asyncio.get_event_loop()
-            except RuntimeError:
-                return getattr(self, "_loop_val", None)
-
-    @loop.setter
-    def loop(self, val):
-        self._loop_val = val
-
     async def setup_hook(self):
         await self.load_extensions()
         self.status_task.start()
@@ -88,32 +74,38 @@ class zyrox(commands.AutoShardedBot):
 
     @tasks.loop(seconds=30)
     async def status_task(self):
-        await self.wait_until_ready()
-        if not self.guilds:
-            return
-
-        guild = self.guilds[0]  # Use first available guild for prefix
         try:
-            config = await getConfig(guild.id)
-            prefix = config.get("prefix", ">")
-        except:
-            prefix = ">"
+            if not self.guilds:
+                return
 
-        user_count = sum(g.member_count or 0 for g in self.guilds)
-        guild_count = len(self.guilds)
+            guild = self.guilds[0]  # Use first available guild for prefix
+            try:
+                config = await getConfig(guild.id)
+                prefix = config.get("prefix", ">")
+            except:
+                prefix = ">"
 
-        self.status_list = [
-            (discord.ActivityType.playing, f"{prefix}help | Security in your Server"),
-            (discord.ActivityType.watching, f"{user_count} users"),
-            (discord.ActivityType.watching, f"{guild_count} servers"),
-            (discord.ActivityType.listening, "Killing Nukers"),
-            (discord.ActivityType.playing, f"Protector {BotName}"),
-        ]
+            user_count = sum(g.member_count or 0 for g in self.guilds)
+            guild_count = len(self.guilds)
 
-        current = self.status_list[self.status_index % len(self.status_list)]
-        # This task only changes the activity, not the online status (dnd, idle, etc.)
-        await self.change_presence(activity=discord.Activity(type=current[0], name=current[1]))
-        self.status_index += 1
+            self.status_list = [
+                (discord.ActivityType.playing, f"{prefix}help | Security in your Server"),
+                (discord.ActivityType.watching, f"{user_count} users"),
+                (discord.ActivityType.watching, f"{guild_count} servers"),
+                (discord.ActivityType.listening, "Killing Nukers"),
+                (discord.ActivityType.playing, f"Protector {BotName}"),
+            ]
+
+            current = self.status_list[self.status_index % len(self.status_list)]
+            # This task only changes the activity, not the online status (dnd, idle, etc.)
+            await self.change_presence(activity=discord.Activity(type=current[0], name=current[1]))
+            self.status_index += 1
+        except Exception as e:
+            pass
+
+    @status_task.before_loop
+    async def before_status_task(self):
+        await self.wait_until_ready()
 
     async def send_raw(self, channel_id: int, content: str, **kwargs) -> typing.Optional[discord.Message]:
         await self.http.send_message(channel_id, content, **kwargs)

@@ -237,21 +237,29 @@ class Minecraft(commands.Cog):
 
     @tasks.loop(minutes=2)
     async def refresh_all_statuses(self):
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute("SELECT guild_id, user_id, channel_id, message_id, server_type, server_ip, server_port FROM mc_status_messages") as cursor:
+                    async for row in cursor:
+                        try:
+                            guild = self.bot.get_guild(row[0])
+                            if not guild: continue
+                            channel = guild.get_channel(row[2])
+                            if not channel: continue
+                            message = await channel.fetch_message(row[3])
+                            embed, file, view = await self.generate_response(guild, row[4], row[5], row[6], row[1])
+                            await message.edit(embed=embed, attachments=[file] if file else [], view=view)
+                            await asyncio.sleep(2)
+                        except discord.NotFound:
+                            await self.delete_status_message(row[0])
+                        except Exception as e:
+                            print(f"Auto-refresh error for guild {row[0]}: {e}")
+        except Exception as e:
+            print(f"Error in refresh_all_statuses loop: {e}")
+
+    @refresh_all_statuses.before_loop
+    async def before_refresh_all_statuses(self):
         await self.bot.wait_until_ready()
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT guild_id, user_id, channel_id, message_id, server_type, server_ip, server_port FROM mc_status_messages") as cursor:
-                async for row in cursor:
-                    try:
-                        guild = self.bot.get_guild(row[0])
-                        if not guild: continue
-                        channel = guild.get_channel(row[2])
-                        if not channel: continue
-                        message = await channel.fetch_message(row[3])
-                        embed, file, view = await self.generate_response(guild, row[4], row[5], row[6], row[1])
-                        await message.edit(embed=embed, attachments=[file] if file else [], view=view)
-                        await asyncio.sleep(2)
-                    except discord.NotFound: await self.delete_status_message(row[0])
-                    except Exception as e: print(f"Auto-refresh error for guild {row[0]}: {e}")
 
     def help_custom(self):
         emoji = EMOJI_JAVA
