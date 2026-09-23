@@ -38,7 +38,6 @@ openai
 duckduckgo-search
 deep-translator
 gTTS
-langdetect
 
 # ── Web Server & Healthcheck (24/7 Keep-Alive for Render) ─────────
 fastapi

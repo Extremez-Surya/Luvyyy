@@ -18,7 +18,6 @@ import time
 import os
 import random
 import json
-from langdetect import detect
 from gtts import gTTS
 from urllib.parse import quote
 from utils.config_loader import load_current_language, config
