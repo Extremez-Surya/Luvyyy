@@ -404,23 +404,40 @@ class Music(commands.Cog):
         if wavelink.Pool.nodes and any(node.status == wavelink.NodeStatus.CONNECTED for node in wavelink.Pool.nodes.values()):
             return
 
-        host = os.getenv("LAVALINK_HOST", "lavalink.serenetia.com")
-        password = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
-        secure = os.getenv("LAVALINK_SECURE", "true").strip().lower() == "true"
-        port = os.getenv("LAVALINK_PORT", "443").strip()
+        raw_host = os.getenv("LAVALINK_HOST", "lavalink.serenetia.com")
+        raw_password = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
+        raw_secure = os.getenv("LAVALINK_SECURE", "true")
+        raw_port = os.getenv("LAVALINK_PORT", "443")
+
+        # Strip any extraneous quotes, spaces or formatting from env values
+        host = str(raw_host).strip().strip("\"'").strip()
+        password = str(raw_password).strip().strip("\"'").strip()
+        port = str(raw_port).strip().strip("\"'").strip()
+        secure_val = str(raw_secure).strip().strip("\"'").lower()
+        secure = secure_val in ("true", "1", "yes") or port == "443"
 
         proto = "https" if secure else "http"
         if port and port not in ("80", "443"):
-            uri = f"{proto}://{host}:{port}"
+            primary_uri = f"{proto}://{host}:{port}"
         else:
-            uri = f"{proto}://{host}"
+            primary_uri = f"{proto}://{host}"
+
+        node_list = [wavelink.Node(uri=primary_uri, password=password, identifier="primary_node")]
+
+        # Register backup public nodes for high availability
+        fallback_candidates = [
+            ("https://lavalink.serenetia.com", "youshallnotpass", "serenetia_backup"),
+            ("https://lavalinkv4.serenetia.com", "youshallnotpass", "serenetia_v4_backup"),
+        ]
+        for f_uri, f_pass, f_id in fallback_candidates:
+            if f_uri != primary_uri and not any(getattr(n, "uri", "") == f_uri for n in node_list):
+                node_list.append(wavelink.Node(uri=f_uri, password=f_pass, identifier=f_id))
 
         try:
-            nodes = [wavelink.Node(uri=uri, password=password)]
-            await wavelink.Pool.connect(nodes=nodes, client=self.client, cache_capacity=None)
-            print(f"[Lavalink] Connected to Lavalink Node at {uri}")
+            await wavelink.Pool.connect(nodes=node_list, client=self.client, cache_capacity=None)
+            print(f"[Lavalink] Connected nodes to Wavelink pool (Primary: {primary_uri})")
         except Exception as e:
-            print(f"[Lavalink] Failed to connect to {uri}: {e}")
+            print(f"[Lavalink] Note on Wavelink pool connect: {e}")
 
 
     async def display_player_embed(self, player, track, ctx, autoplay=False):
@@ -464,34 +481,33 @@ class Music(commands.Cog):
             await ctx.send(view=CV2(f"{WARNING} you need to be in a voice channel to use this command."))
             return
 
-        vc = ctx.voice_client or await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        # Verify Lavalink Node connection state before connecting player
+        if not wavelink.Pool.nodes or not any(node.status == wavelink.NodeStatus.CONNECTED for node in wavelink.Pool.nodes.values()):
+            try:
+                await self.connect_nodes()
+                await asyncio.sleep(1)
+            except Exception:
+                pass
+            if not wavelink.Pool.nodes or not any(node.status == wavelink.NodeStatus.CONNECTED for node in wavelink.Pool.nodes.values()):
+                await ctx.send(view=CV2(f"{WARNING} Music server is connecting. Please wait a moment and try again."))
+                return
+
+        try:
+            vc = ctx.voice_client or await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        except wavelink.InvalidNodeException:
+            await ctx.send(view=CV2(f"{WARNING} Music server is currently connecting. Please wait a few seconds."))
+            return
+        except Exception as e:
+            await ctx.send(view=CV2(f"Could not connect to voice channel: {e}"))
+            return
+
         vc.ctx = ctx
-        
         
         if vc.playing:
             if ctx.voice_client and ctx.voice_client.channel != ctx.author.voice.channel:
                 await ctx.send(view=CV2(f"You must be connected to {ctx.voice_client.channel.mention} to play."))
                 return
         vc.autoplay = wavelink.AutoPlayMode.disabled
-
-        """if re.match(SPOTIFY_TRACK_REGEX, query):
-            await self.handle_spotify_link(ctx, vc, query, "track")
-        elif re.match(SPOTIFY_PLAYLIST_REGEX, query):
-            await self.handle_spotify_link(ctx, vc, query, "playlist")
-        elif re.match(SPOTIFY_ALBUM_REGEX, query):
-            await self.handle_spotify_link(ctx, vc, query, "album")
-        
-            return"""
-            
-        # Verify Lavalink Node connection state
-        if not wavelink.Pool.nodes or not any(node.status == wavelink.NodeStatus.CONNECTED for node in wavelink.Pool.nodes.values()):
-            try:
-                await self.connect_nodes()
-            except Exception:
-                pass
-            if not wavelink.Pool.nodes or not any(node.status == wavelink.NodeStatus.CONNECTED for node in wavelink.Pool.nodes.values()):
-                await ctx.send(view=CV2(f"{WARNING} Music server is connecting. Please wait a moment and try again."))
-                return
 
         try:
             tracks = await wavelink.Playable.search(query)
@@ -943,11 +959,26 @@ class Music(commands.Cog):
     @ignore_check()
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def join(self, ctx: commands.Context):
-        if ctx.author.voice:
+        if not ctx.author.voice:
+            return await ctx.send(view=CV2("You need to join a voice channel first."))
+
+        if not wavelink.Pool.nodes or not any(node.status == wavelink.NodeStatus.CONNECTED for node in wavelink.Pool.nodes.values()):
+            try:
+                await self.connect_nodes()
+                await asyncio.sleep(1)
+            except Exception:
+                pass
+
+        if not wavelink.Pool.nodes or not any(node.status == wavelink.NodeStatus.CONNECTED for node in wavelink.Pool.nodes.values()):
+            return await ctx.send(view=CV2(f"{WARNING} Music server is connecting. Please wait a few seconds."))
+
+        try:
             await ctx.author.voice.channel.connect(cls=wavelink.Player)
             await ctx.send(view=CV2("Joined the voice channel."))
-        else:
-            await ctx.send(view=CV2("You need to join a voice channel first."))
+        except wavelink.InvalidNodeException:
+            await ctx.send(view=CV2(f"{WARNING} Music server is connecting. Please try again in 5 seconds."))
+        except Exception as e:
+            await ctx.send(view=CV2(f"Could not join voice channel: {e}"))
 
     @commands.hybrid_command(name="disconnect", aliases=["dc", "leave"], usage="disconnect", help="Disconnects the bot from the voice channel.")
     @blacklist_check()
