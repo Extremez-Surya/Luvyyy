@@ -85,9 +85,9 @@ class HelpCommand(commands.HelpCommand):
     )
 
     try:
-        await ctx.reply(view=embed, mention_author=True)
+        await ctx.reply(content=f"**{BotName} Helper**", view=embed, mention_author=True)
     except Exception:
-        await ctx.send(view=embed)
+        await ctx.send(content=f"**{BotName} Helper**", view=embed)
 
   async def send_bot_help(self, mapping):
     ctx = self.context
@@ -102,18 +102,15 @@ class HelpCommand(commands.HelpCommand):
       return
 
     # Show loading message
-    loading_embed = CV2(f"{LOADINGRED} Loading help Menu...")
     loading_msg = None
     try:
-      loading_msg = await ctx.reply(view=loading_embed)
+      loading_msg = await ctx.reply(f"{LOADINGRED} Loading help menu...")
     except Exception:
       with suppress(Exception):
-        loading_msg = await ctx.send(view=loading_embed)
+        loading_msg = await ctx.send(f"{LOADINGRED} Loading help menu...")
 
-    # Wait 2 seconds
-    await asyncio.sleep(2)
+    await asyncio.sleep(1)
 
-    # Delete loading message
     if loading_msg:
       with suppress(Exception):
         await loading_msg.delete()
@@ -174,9 +171,21 @@ class HelpCommand(commands.HelpCommand):
     
     view = vhelp.View(mapping=mapping, ctx=self.context, homeembed=embed, ui=2)
     try:
-      await ctx.reply(view=view)
+      await ctx.reply(content=f"**{BotName} Help Menu**", view=view)
     except Exception:
-      await ctx.send(view=view)
+      try:
+        await ctx.send(content=f"**{BotName} Help Menu**", view=view)
+      except Exception:
+        # Fallback to standard embed
+        std_embed = discord.Embed(
+            title=f"{BotName} Help Menu",
+            description=f"**Server Prefix:** `{prefix}`\nType `{prefix}help <command>` for command details.",
+            color=0xFF0000
+        )
+        std_embed.add_field(name="Main Features", value="Security, Automod, Utility, Music, Moderation, Welcomer, Giveaway, Ticket, Invite Tracker", inline=False)
+        std_embed.add_field(name="Extra Features", value="Logging, Vanityroles, Counting, J2C, AI, Boost, Leveling, Sticky, Verification, Minecraft, Birthday", inline=False)
+        std_embed.set_footer(text=f"Requested By {self.context.author}")
+        await ctx.send(embed=std_embed)
 
   async def send_command_help(self, command):
     ctx = self.context
@@ -204,9 +213,21 @@ class HelpCommand(commands.HelpCommand):
     embed.set_author(name=f"{command.qualified_name.title()} Command")
     embed.set_footer(text="<[] = optional | < > = required • Use Prefix Before Commands.")
     try:
-      await self.context.reply(view=embed, mention_author=False)
+      await self.context.reply(content=f"**{command.qualified_name.title()} Command**", view=embed, mention_author=False)
     except Exception:
-      await self.context.send(view=embed)
+      try:
+        await self.context.send(content=f"**{command.qualified_name.title()} Command**", view=embed)
+      except Exception:
+        std_embed = discord.Embed(
+            title=f"{command.qualified_name.title()} Command",
+            description=zyrox,
+            color=color
+        )
+        if command.aliases:
+            std_embed.add_field(name="Alt cmd", value=f"```{alias}```", inline=False)
+        std_embed.add_field(name="Usage", value=f"```{self.context.prefix}{command.signature}```", inline=False)
+        std_embed.set_footer(text="<[] = optional | < > = required")
+        await self.context.send(embed=std_embed)
 
   def get_command_signature(self, command: commands.Command) -> str:
     parent = command.full_parent_name

@@ -24,7 +24,7 @@ import typing
 from typing import List
 import aiosqlite
 from utils.config import OWNER_IDS, BotName
-from utils import getConfig, updateConfig
+from utils.Tools import getConfig, updateConfig
 from .Context import Context
 from colorama import Fore, Style, init
 import importlib

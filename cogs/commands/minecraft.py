@@ -161,10 +161,10 @@ class Minecraft(commands.Cog):
             player_text = f"{status_data.get('players_online', 0)}/{status_data.get('players_max', 0)}"
             bbox = draw.textbbox((0, 0), player_text, font=font_medium)
             draw.text((CANVAS_WIDTH - (bbox[2] - bbox[0]) - 20, 15), player_text, font=font_medium, fill=(255, 255, 255))
-            motd = (status_data.get('motd', 'Offline') or "A Minecraft Server").split('')[0]
+            motd = (status_data.get('motd', 'Offline') or "A Minecraft Server").split('\n')[0]
             bbox = draw.textbbox((0,0), motd, font=font_large)
             draw.text(((CANVAS_WIDTH - (bbox[2] - bbox[0])) // 2, 60), motd, font=font_large, fill=(0, 255, 255))
-            power_text = "Powered by STACY"
+            power_text = "Powered by Luvyyy"
             bbox = draw.textbbox((0,0), power_text, font=font_small)
             draw.text((CANVAS_WIDTH - (bbox[2] - bbox[0]) - 15, CANVAS_HEIGHT - 25), power_text, font=font_small, fill=(170, 170, 170))
             buffer = io.BytesIO()
@@ -172,7 +172,8 @@ class Minecraft(commands.Cog):
             buffer.seek(0)
             return File(buffer, filename="status.png")
         except FileNotFoundError: return None
-        except Exception: return None
+        except Exception as e:
+            return None
 
     async def generate_response(self, guild, server_type, ip, port, user_id):
         _, status, favicon = await self.auto_detect_server(ip, port)
@@ -252,9 +253,97 @@ class Minecraft(commands.Cog):
                     except discord.NotFound: await self.delete_status_message(row[0])
                     except Exception as e: print(f"Auto-refresh error for guild {row[0]}: {e}")
 
-    minecraft = app_commands.Group(name="minecraft", description="Commands for Minecraft server status.")
+    def help_custom(self):
+        emoji = EMOJI_JAVA
+        label = "Minecraft Commands"
+        description = "Check status and setup auto-updating Minecraft panels"
+        return emoji, label, description
 
-    @minecraft.command(name="setup", description="Set up the auto-updating Minecraft server status.")
+    @commands.group(name="minecraft", aliases=["mc"], invoke_without_command=True)
+    async def minecraft_cmd(self, ctx: commands.Context, ip: str = None, port: int = None):
+        """Minecraft server status commands."""
+        if ip:
+            return await self.status_cmd(ctx, ip, port)
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            row = await (await db.execute("SELECT server_type, server_ip, server_port, user_id FROM mc_status_messages WHERE guild_id = ?", (ctx.guild.id,))).fetchone()
+        if row:
+            return await self.status_cmd(ctx)
+
+        prefix = ctx.prefix
+        embed = discord.Embed(
+            title=f"{EMOJI_JAVA} Minecraft Commands",
+            description=f"Check Minecraft server status and setup auto-updating status panels.\n\n"
+                        f"• `{prefix}mc <ip> [port]` - Check live status of any Minecraft server\n"
+                        f"• `{prefix}minecraft status [ip] [port]` - Check configured or specific server\n"
+                        f"• `{prefix}minecraft setup <ip> [port]` - Setup auto-updating live panel\n"
+                        f"• `{prefix}minecraft reset` - Remove live status panel",
+            color=0x55FF55
+        )
+        await ctx.send(embed=embed)
+
+    @minecraft_cmd.command(name="status", aliases=["check"])
+    async def status_cmd(self, ctx: commands.Context, ip: str = None, port: int = None):
+        """Get live status of a Minecraft server."""
+        async with ctx.typing():
+            if not ip:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    row = await (await db.execute("SELECT server_type, server_ip, server_port, user_id FROM mc_status_messages WHERE guild_id = ?", (ctx.guild.id,))).fetchone()
+                if not row:
+                    return await ctx.send(f"{EMOJI_WARNING} No server configured for this guild. Use `{ctx.prefix}minecraft status <ip>` or `{ctx.prefix}minecraft setup <ip>`.")
+                server_type, ip, port, user_id = row[0], row[1], row[2], row[3]
+            else:
+                detected_type, status, _ = await self.auto_detect_server(ip, port)
+                if not detected_type:
+                    return await ctx.send(f"{EMOJI_ERROR} Could not reach Minecraft server `{ip}`. Please check the IP and port.")
+                server_type = detected_type
+                user_id = ctx.author.id
+
+            embed, file, view = await self.generate_response(ctx.guild, server_type, ip, port, user_id)
+            if file:
+                await ctx.send(embed=embed, file=file, view=view)
+            else:
+                await ctx.send(embed=embed, view=view)
+
+    @minecraft_cmd.command(name="setup")
+    @commands.has_permissions(manage_guild=True)
+    async def setup_cmd(self, ctx: commands.Context, ip: str = None, port: int = None):
+        """Set up the auto-updating Minecraft server status."""
+        if not ip:
+            return await ctx.send(f"{EMOJI_WARNING} Please provide the server IP! Usage: `{ctx.prefix}minecraft setup <ip> [port]` (e.g. `{ctx.prefix}minecraft setup play.hypixel.net`)")
+
+        async with ctx.typing():
+            async with aiosqlite.connect(DB_PATH) as db:
+                if await (await db.execute("SELECT 1 FROM mc_status_messages WHERE guild_id = ?", (ctx.guild.id,))).fetchone():
+                    return await ctx.send(f"{EMOJI_WARNING} Setup already exists for this guild. Use `{ctx.prefix}minecraft reset` first.")
+
+            detected_type, status, _ = await self.auto_detect_server(ip, port)
+            if not detected_type or not status or not status.get('online'):
+                return await ctx.send(f"{EMOJI_ERROR} Could not reach Minecraft server `{ip}`. Please check the IP and port.")
+
+            embed, file, view = await self.generate_response(ctx.guild, detected_type, ip, port, ctx.author.id)
+            if file:
+                sent_message = await ctx.send(embed=embed, file=file, view=view)
+            else:
+                sent_message = await ctx.send(embed=embed, view=view)
+
+            await self.save_status_message(ctx.guild.id, ctx.author.id, ctx.channel.id, sent_message.id, detected_type, ip, port)
+            await ctx.send(f"{EMOJI_SUCCESS} Auto-updating status for `{ip}` has been set up in {ctx.channel.mention}!")
+
+    @minecraft_cmd.command(name="reset", aliases=["remove", "delete"])
+    @commands.has_permissions(manage_guild=True)
+    async def reset_cmd(self, ctx: commands.Context):
+        """Remove the Minecraft server status setup."""
+        removed = await self.delete_status_message(ctx.guild.id)
+        if removed:
+            await ctx.send(f"{EMOJI_SUCCESS} Minecraft status panel removed successfully.")
+        else:
+            await ctx.send(f"{EMOJI_WARNING} No Minecraft setup found for this guild.")
+
+    # Slash commands group
+    minecraft_slash = app_commands.Group(name="minecraft", description="Commands for Minecraft server status.")
+
+    @minecraft_slash.command(name="setup", description="Set up the auto-updating Minecraft server status.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def setup_slash(self, interaction: discord.Interaction):
         async with aiosqlite.connect(DB_PATH) as db:
@@ -262,22 +351,33 @@ class Minecraft(commands.Cog):
                 return await interaction.response.send_message(f"{EMOJI_WARNING} Setup already exists. Use `/minecraft reset`.", ephemeral=True)
         await interaction.response.send_modal(SetupModal(self))
 
-    @minecraft.command(name="reset", description="Remove the Minecraft server status setup.")
+    @minecraft_slash.command(name="reset", description="Remove the Minecraft server status setup.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def reset_slash(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         removed = await self.delete_status_message(interaction.guild.id)
         await interaction.followup.send(f"{EMOJI_SUCCESS} Minecraft status panel removed." if removed else f"{EMOJI_WARNING} No setup found.", ephemeral=True)
             
-    @minecraft.command(name="status", description="Get a one-time status of the configured server.")
-    async def status_slash(self, interaction: discord.Interaction):
+    @minecraft_slash.command(name="status", description="Get a one-time status of the configured server.")
+    async def status_slash(self, interaction: discord.Interaction, ip: str = None, port: int = None):
         await interaction.response.defer(ephemeral=False)
-        async with aiosqlite.connect(DB_PATH) as db:
-            row = await (await db.execute("SELECT server_type, server_ip, server_port, user_id FROM mc_status_messages WHERE guild_id = ?", (interaction.guild.id,))).fetchone()
-        if not row:
-            return await interaction.followup.send(f"{EMOJI_WARNING} No server configured. Use `/minecraft setup`.", ephemeral=True)
-        embed, file, _ = await self.generate_response(interaction.guild, row[0], row[1], row[2], row[3])
-        await interaction.followup.send(embed=embed, file=file, ephemeral=False)
+        if ip:
+            detected_type, status, _ = await self.auto_detect_server(ip, port)
+            if not detected_type:
+                return await interaction.followup.send(f"{EMOJI_ERROR} Could not reach Minecraft server `{ip}`.", ephemeral=True)
+            server_type, user_id = detected_type, interaction.user.id
+        else:
+            async with aiosqlite.connect(DB_PATH) as db:
+                row = await (await db.execute("SELECT server_type, server_ip, server_port, user_id FROM mc_status_messages WHERE guild_id = ?", (interaction.guild.id,))).fetchone()
+            if not row:
+                return await interaction.followup.send(f"{EMOJI_WARNING} No server configured. Provide an IP or use `/minecraft setup`.", ephemeral=True)
+            server_type, ip, port, user_id = row[0], row[1], row[2], row[3]
+
+        embed, file, _ = await self.generate_response(interaction.guild, server_type, ip, port, user_id)
+        if file:
+            await interaction.followup.send(embed=embed, file=file, ephemeral=False)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=False)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Minecraft(bot))
