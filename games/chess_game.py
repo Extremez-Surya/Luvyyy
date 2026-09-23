@@ -19,7 +19,10 @@ import asyncio
 
 import discord
 from discord.ext import commands
-import chess
+try:
+    import chess
+except ImportError:
+    chess = None
 from utils.emoji import SUCCESS
 
 from .utils import DiscordColor, DEFAULT_COLOR

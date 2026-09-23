@@ -31,7 +31,6 @@ colorama
 tabulate
 beautifulsoup4
 mcstatus
-chess
 
 # ── AI & Translation ─────────────────────────────────────────────
 openai

@@ -41,6 +41,9 @@ class Games(Cog):
     @commands.max_concurrency(5, per=commands.BucketType.default, wait=False)
     @commands.guild_only()
     async def _chess(self, ctx: Context, player: discord.Member):
+        from games.chess_game import chess as chess_module
+        if chess_module is None:
+            return await ctx.send(view=CV2("❌ Error", "Chess library is not installed on this host."))
         if player == ctx.author:
             await ctx.send(view=CV2("❌ Error", "You Cannot play game with yourself!"))
         elif player.bot:
