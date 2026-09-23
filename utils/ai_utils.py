@@ -12,6 +12,7 @@
 # ║                                                                  ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
+from charset_normalizer import detect
 import aiohttp
 import io
 import time
@@ -21,19 +22,20 @@ import json
 from gtts import gTTS
 from urllib.parse import quote
 from utils.config_loader import load_current_language, config
-from openai import AsyncOpenAI
-from duckduckgo_search import AsyncDDGS
-from dotenv import load_dotenv
+try:
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(
+        base_url=config.get('API_BASE_URL', 'https://api.openai.com/v1'),
+        api_key=os.getenv("OPENAI_API_KEY", "nah-ha"),
+    )
+except ImportError:
+    AsyncOpenAI = None
+    client = None
 
-load_dotenv()
-
-current_language = load_current_language()
-internet_access = config['INTERNET_ACCESS']
-
-client = AsyncOpenAI(
-    base_url=config['API_BASE_URL'],
-    api_key="nah-ha",
-)
+try:
+    from duckduckgo_search import AsyncDDGS
+except ImportError:
+    AsyncDDGS = None
 
 async def generate_response(instructions, history):
     messages = [
@@ -101,6 +103,7 @@ async def duckduckgotool(query) -> str:
     if config['INTERNET_ACCESS']:
         return "internet access has been disabled by user"
     blob = ''
+    # pyrefly: ignore [not-async]
     results = await AsyncDDGS(proxy=None).text(query, max_results=6)
     try:
         for index, result in enumerate(results[:6]):  # Limiting to 6 results

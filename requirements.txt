@@ -31,15 +31,5 @@ colorama
 tabulate
 beautifulsoup4
 mcstatus
-
-# ── AI & Translation ─────────────────────────────────────────────
-openai
-duckduckgo-search
 deep-translator
 gTTS
-
-# ── Web Server & Healthcheck (24/7 Keep-Alive for Render) ─────────
-fastapi
-uvicorn
-slowapi
-pydantic

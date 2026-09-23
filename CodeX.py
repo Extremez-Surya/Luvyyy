@@ -317,32 +317,37 @@ async def reaction(ctx: Context):
 
 
 # --- Web Server for 24/7 Keep-Alive & Health Check (Render.com) ---
-import uvicorn
-from threading import Thread
-from api.server import create_app
-from api.dependencies import set_bot
-
-fastapi_app = create_app()
-fastapi_app.state.bot = client
-set_bot(client)
-
-# On Render, PORT is provided as an environment variable (e.g. 10000)
-API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))
-API_ENABLED = os.getenv("API_ENABLED", "true").strip().lower() == "true"
-
-def run_api():
-    try:
-        uvicorn.run(fastapi_app, host='0.0.0.0', port=API_PORT, log_level="warning")
-    except Exception as e:
-        print(f"\033[31m◈ Web Server Error: {e}\033[0m")
+# --- Optional Web Server for Keep-Alive & Health Check (Render.com) ---
+API_ENABLED = os.getenv("API_ENABLED", "false").strip().lower() == "true"
 
 def keep_alive():
     if not API_ENABLED:
-        print(f"\033[33m◈ Web Server: Disabled via API_ENABLED=false\033[0m")
         return
-    print(f"\033[32m◈ Web Server (24/7 Keep-Alive): Starting on port {API_PORT}\033[0m")
-    server = Thread(target=run_api, daemon=True)
-    server.start()
+    try:
+        import uvicorn
+        from threading import Thread
+        from api.server import create_app
+        from api.dependencies import set_bot
+
+        fastapi_app = create_app()
+        fastapi_app.state.bot = client
+        set_bot(client)
+
+        API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))
+
+        def run_api():
+            try:
+                uvicorn.run(fastapi_app, host='0.0.0.0', port=API_PORT, log_level="warning")
+            except Exception as e:
+                print(f"\033[31m◈ Web Server Error: {e}\033[0m")
+
+        print(f"\033[32m◈ Web Server (Keep-Alive): Starting on port {API_PORT}\033[0m")
+        server = Thread(target=run_api, daemon=True)
+        server.start()
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"\033[31m◈ Web Server Startup Error: {e}\033[0m")
 
 keep_alive()
 
