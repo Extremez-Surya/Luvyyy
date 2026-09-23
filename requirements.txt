@@ -17,14 +17,11 @@ dnspython
 
 # ── Databases & Storage ──────────────────────────────────────────
 aiosqlite
-pymongo
-motor
 PyYAML
 python-dotenv
 
 # ── Media & Image Processing ─────────────────────────────────────
 pillow>=10.0.0
-numpy
 
 # ── Utilities, Time & System ─────────────────────────────────────
 pytz
