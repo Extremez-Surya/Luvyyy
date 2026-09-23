@@ -52,12 +52,8 @@ def system(msg):  _log("EmojiSync", Fore.MAGENTA, "★", msg)
 
 
 def _restart() -> None:
-    """Replace the current process with a fresh copy of itself."""
-    system(f"Restarting bot to load updated emoji IDs...")
-    # Flush stdout so the message is visible before the process is replaced
-    sys.stdout.flush()
-    os.execv(sys.executable, [sys.executable] + sys.argv)
-
+    """Log notice when emojis are updated without killing the running bot."""
+    system("Emoji sync completed. Updated emojis will take effect on next manual start.")
 
 async def _fetch_emoji_image(session: aiohttp.ClientSession, emoji_id: str, animated: bool):
     ext = "gif" if animated else "webp"
@@ -75,10 +71,9 @@ async def run_sync(token: str) -> None:
     """
     Async emoji sync. Pass the bot token directly.
     Respects the EMOJI_SYNC env var — set to "false" to disable.
-    Triggers an automatic restart when emoji.py is patched.
     """
     # ── Toggle check ──────────────────────────────────────────────────────────
-    enabled = os.getenv("EMOJI_SYNC", "true").strip().lower()
+    enabled = os.getenv("EMOJI_SYNC", "false").strip().lower()
     if enabled != "true":
         info(f"Disabled via EMOJI_SYNC={enabled!r} — skipping.")
         return

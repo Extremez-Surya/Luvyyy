@@ -75,8 +75,8 @@ def create_stats_content(stats_data, selected):
         ),
         "Team Info": (
             f"**{ZYROX_OWNER} Developers & Owners**\n\n"
-            "• **Developer / Owner**: [Vinay Kumar](https://discord.com/users/731390792567881739) (`731390792567881739`)\n"
-            "• **Developer / Owner**: [Surya](https://discord.com/users/984409270344908872) (`984409270344908872`)\n"
+            "• **Developer / Owner**: [Ghost](https://discord.com/users/731390792567881739) (`731390792567881739`)\n"
+            "• **Developer / Owner**: [Vinay Kumar](https://discord.com/users/984409270344908872) (`984409270344908872`)\n"
         ),
         "Code Info": (
             f"**{ZYROX_SEARCH} Codebase Overview**\n\n"

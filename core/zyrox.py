@@ -39,9 +39,11 @@ extensions: List[str] = [
 
 class zyrox(commands.AutoShardedBot):
     def __init__(self, *arg, **kwargs):
-        intents = discord.Intents.all()
-        intents.presences = True
-        intents.members = True
+        intents = kwargs.pop("intents", None)
+        if intents is None:
+            intents = discord.Intents.all()
+            intents.presences = True
+            intents.members = True
         discord_proxy = os.getenv("DISCORD_PROXY", "").strip() or None
         super().__init__(command_prefix=self.get_prefix,
                          case_insensitive=True,
