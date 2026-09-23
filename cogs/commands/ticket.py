@@ -19,6 +19,7 @@ from utils.emoji import CROSS, DELETE_ALT1, HANDSHAKE, LOCK, TICK, UNLOCK, ZBAN,
 from discord import app_commands
 from discord.ext import commands
 import sqlite3
+import logging
 from datetime import datetime
 import asyncio
 import io
@@ -51,25 +52,66 @@ TICKET_LIMIT_PER_USER = 3
 # --- Database Class ---
 class TicketDatabase:
     def __init__(self, path):
-        self.conn = sqlite3.connect(path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self._create_tables()
+        self.path = path
+        self._conn = None
+        self._init_db()
+
+    @property
+    def conn(self):
+        return self._ensure_conn()
+
+    def _ensure_conn(self):
+        try:
+            if self._conn is None:
+                self._conn = sqlite3.connect(self.path, check_same_thread=False)
+                self._conn.row_factory = sqlite3.Row
+            else:
+                self._conn.execute("SELECT 1")
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+            try:
+                if self._conn:
+                    self._conn.close()
+            except Exception:
+                pass
+            self._conn = sqlite3.connect(self.path, check_same_thread=False)
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
 
     def _create_tables(self):
-        with self.conn:
-            self.conn.execute("CREATE TABLE IF NOT EXISTS guild_configs (guild_id INTEGER PRIMARY KEY, panel_channel_id INTEGER, logging_channel_id INTEGER, panel_message_id INTEGER, panel_type TEXT, embed_title TEXT, embed_description TEXT, embed_color INTEGER, embed_image_url TEXT, embed_thumbnail_url TEXT, closed_category_id INTEGER)")
-            self.conn.execute("CREATE TABLE IF NOT EXISTS ticket_categories (category_id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER, name TEXT NOT NULL, emoji TEXT, notified_roles TEXT, button_style INTEGER, discord_category_id INTEGER, FOREIGN KEY (guild_id) REFERENCES guild_configs(guild_id) ON DELETE CASCADE)")
-            self.conn.execute("CREATE TABLE IF NOT EXISTS open_tickets (channel_id INTEGER PRIMARY KEY, ticket_number INTEGER, guild_id INTEGER, creator_id INTEGER NOT NULL, category_db_id INTEGER, created_at TEXT NOT NULL, closed_by_id INTEGER, closed_at TEXT, is_locked BOOLEAN DEFAULT FALSE, is_claimed BOOLEAN DEFAULT FALSE, claimed_by_id INTEGER, FOREIGN KEY (guild_id) REFERENCES guild_configs(guild_id) ON DELETE CASCADE, FOREIGN KEY (category_db_id) REFERENCES ticket_categories(category_id) ON DELETE SET NULL)")
-            self.conn.execute("CREATE TABLE IF NOT EXISTS user_ticket_counts (guild_id INTEGER, user_id INTEGER, ticket_count INTEGER DEFAULT 0, PRIMARY KEY (guild_id, user_id))")
+        self._init_db()
+
+    def _init_db(self):
+        conn = self._ensure_conn()
+        with conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS guild_configs (guild_id INTEGER PRIMARY KEY, panel_channel_id INTEGER, logging_channel_id INTEGER, panel_message_id INTEGER, panel_type TEXT, embed_title TEXT, embed_description TEXT, embed_color INTEGER, embed_image_url TEXT, embed_thumbnail_url TEXT, closed_category_id INTEGER)")
+            conn.execute("CREATE TABLE IF NOT EXISTS ticket_categories (category_id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER, name TEXT NOT NULL, emoji TEXT, notified_roles TEXT, button_style INTEGER, discord_category_id INTEGER, FOREIGN KEY (guild_id) REFERENCES guild_configs(guild_id) ON DELETE CASCADE)")
+            conn.execute("CREATE TABLE IF NOT EXISTS open_tickets (channel_id INTEGER PRIMARY KEY, ticket_number INTEGER, guild_id INTEGER, creator_id INTEGER NOT NULL, category_db_id INTEGER, created_at TEXT NOT NULL, closed_by_id INTEGER, closed_at TEXT, is_locked BOOLEAN DEFAULT FALSE, is_claimed BOOLEAN DEFAULT FALSE, claimed_by_id INTEGER, FOREIGN KEY (guild_id) REFERENCES guild_configs(guild_id) ON DELETE CASCADE, FOREIGN KEY (category_db_id) REFERENCES ticket_categories(category_id) ON DELETE SET NULL)")
+            conn.execute("CREATE TABLE IF NOT EXISTS user_ticket_counts (guild_id INTEGER, user_id INTEGER, ticket_count INTEGER DEFAULT 0, PRIMARY KEY (guild_id, user_id))")
 
     def execute(self, q, p=()):
-        with self.conn: return self.conn.execute(q, p)
+        conn = self._ensure_conn()
+        with conn:
+            return conn.execute(q, p)
+
     def fetchone(self, q, p=()):
-        cur = self.conn.cursor(); cur.execute(q, p); return cur.fetchone()
+        conn = self._ensure_conn()
+        cur = conn.cursor()
+        cur.execute(q, p)
+        return cur.fetchone()
+
     def fetchall(self, q, p=()):
-        cur = self.conn.cursor(); cur.execute(q, p); return cur.fetchall()
+        conn = self._ensure_conn()
+        cur = conn.cursor()
+        cur.execute(q, p)
+        return cur.fetchall()
+
     def close(self):
-        if self.conn: self.conn.close()
+        if self._conn:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
 # --- Utility Functions ---
 async def get_or_create_log_channel(db, guild):
@@ -270,13 +312,21 @@ class CategoryConfigView(discord.ui.View):
 
 class TicketCog(commands.Cog, name="Ticket System"):
     def __init__(self, bot):
-        self.bot, self.db = bot, TicketDatabase(DB_PATH)
-        self.bot.loop.create_task(self.load_persistent_views())
+        self.bot = bot
+        self.db = TicketDatabase(DB_PATH)
+        self._load_task = self.bot.loop.create_task(self.load_persistent_views())
 
     async def load_persistent_views(self):
-        await self.bot.wait_until_ready()
-        for config in self.db.fetchall("SELECT guild_id, panel_message_id FROM guild_configs WHERE panel_message_id IS NOT NULL"):
-            if view := self.create_panel_view(config['guild_id']): self.bot.add_view(view, message_id=config['panel_message_id'])
+        try:
+            await self.bot.wait_until_ready()
+            configs = self.db.fetchall("SELECT guild_id, panel_message_id FROM guild_configs WHERE panel_message_id IS NOT NULL")
+            for config in configs:
+                if view := self.create_panel_view(config['guild_id']):
+                    self.bot.add_view(view, message_id=config['panel_message_id'])
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logging.error(f"Error loading persistent ticket views: {e}")
 
     def create_panel_view(self, guild_id):
         config = self.db.fetchone("SELECT panel_type FROM guild_configs WHERE guild_id=?", (guild_id,))
@@ -290,7 +340,10 @@ class TicketCog(commands.Cog, name="Ticket System"):
             for c in categories: view.add_item(discord.ui.Button(label=c['name'], style=discord.ButtonStyle(c['button_style']), emoji=c['emoji'], custom_id=f"create_ticket_{c['category_id']}"))
         return view
 
-    def cog_unload(self): self.db.close()
+    def cog_unload(self):
+        if hasattr(self, '_load_task') and self._load_task and not self._load_task.done():
+            self._load_task.cancel()
+        self.db.close()
 
     @commands.Cog.listener()
     async def on_interaction(self, inter):
