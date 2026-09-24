@@ -17,7 +17,9 @@ from utils.emoji import ARROWRED, CROSS, NEXT_ALT1, REDRULESBOOK, RED_BUTTON, RE
 from discord.ext import commands
 import json
 import os
+import time
 import asyncio
+from contextlib import suppress
 from discord.ui import LayoutView, TextDisplay, Separator, Container
 from utils.cv2 import CV2, build_container
 
@@ -42,11 +44,15 @@ class Counting(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.data_file = "db/counting.json"
+        self._last_warn: dict[int, float] = {}
         if not os.path.exists(self.data_file):
-            with open(self.data_file, 'w') as f:
+            with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump({}, f)
-        with open(self.data_file, 'r') as f:
-            self.counting_data = json.load(f)
+        try:
+            with open(self.data_file, 'r', encoding='utf-8') as f:
+                self.counting_data = json.load(f)
+        except Exception:
+            self.counting_data = {}
 
     def save_data(self):
         with open(self.data_file, 'w') as f:
@@ -163,7 +169,7 @@ class Counting(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.author.bot:
+        if not message.guild or message.author.bot:
             return
 
         guild_id = str(message.guild.id)
@@ -179,30 +185,46 @@ class Counting(commands.Cog):
 
         content = message.content.strip()
 
+        async def _safe_delete(msg: discord.Message):
+            if not msg:
+                return
+            try:
+                await msg.delete()
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
+        now = time.time()
+        last_warn = self._last_warn.get(message.channel.id, 0)
+
+        # 1. Non-digit message in counting channel
         if not content.isdigit():
-            msg = await message.channel.send(f"{WARNING} Alphabet not allowed!")
-            await asyncio.sleep(3)
-            await msg.delete()
-            await message.delete()
+            await _safe_delete(message)
+            if now - last_warn >= 2.5:
+                self._last_warn[message.channel.id] = now
+                with suppress(Exception):
+                    await message.channel.send(f"{WARNING} Only numbers are allowed in this channel!", delete_after=3)
             return
 
         number = int(content)
         expected_number = data.get("count", 0) + 1
 
+        # 2. Wrong number entered
         if number != expected_number:
-            msg = await message.channel.send(f"{CROSS} Wrong number entered! Expected number is **{expected_number}**")
-            await asyncio.sleep(3)
-            await msg.delete()
-            await message.delete()
+            await _safe_delete(message)
+            if now - last_warn >= 2.5:
+                self._last_warn[message.channel.id] = now
+                with suppress(Exception):
+                    await message.channel.send(f"{CROSS} Wrong number! Expected number was **{expected_number}**", delete_after=3)
             if data.get("reset_on_fail", False):
                 self.counting_data[guild_id]["count"] = 0
                 self.save_data()
             return
 
-        # Correct number
+        # 3. Correct number entered
         self.counting_data[guild_id]["count"] = number
         self.save_data()
-        await message.add_reaction(TICK)
+        with suppress(Exception):
+            await message.add_reaction(TICK)
 
 def setup(bot):
     bot.add_cog(Counting(bot))
