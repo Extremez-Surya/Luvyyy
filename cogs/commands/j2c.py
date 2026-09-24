@@ -33,7 +33,7 @@ def build_interface_embed() -> discord.Embed:
         title="TempVoice Interface",
         description=(
             "This **interface** can be used to manage temporary voice channels.\n"
-            "More options are available with **/voice** commands.\n\n"
+            "More options are available with **;j2c** commands.\n\n"
             "Press the buttons below to use the interface"
         ),
         color=0xE02B56
@@ -296,26 +296,26 @@ class JoinToCreate(Cog):
                 await self.delete_private_channel(vc_id)
 
     # ── J2C Setup & Reset Commands ────────────────────────────────────
-    @commands.group(name="j2c", aliases=["voice", "v", "tempvoice"], invoke_without_command=True)
+    @commands.group(name="j2c", aliases=["jointocreate", "tempvoice", "jtc"], invoke_without_command=True)
     async def j2c_group(self, ctx: Context):
         """TempVoice management interface and commands."""
         embed = discord.Embed(
             title="🔊 TempVoice System",
             description=(
                 f"Manage your temporary voice channels easily!\n\n"
-                f"**Commands:**\n"
+                f"**Setup Commands:**\n"
                 f"`{ctx.prefix}j2c setup` — Setup the TempVoice interface & Join to Create channel\n"
                 f"`{ctx.prefix}j2c reset` — Completely remove and reset TempVoice\n\n"
                 f"**Voice Controls (When in your temporary VC):**\n"
-                f"`{ctx.prefix}voice name <new name>` — Rename your VC\n"
-                f"`{ctx.prefix}voice limit <0-99>` — Set user limit\n"
-                f"`{ctx.prefix}voice lock` / `{ctx.prefix}voice unlock` — Lock/Unlock VC\n"
-                f"`{ctx.prefix}voice trust @user` / `{ctx.prefix}voice untrust @user`\n"
-                f"`{ctx.prefix}voice block @user` / `{ctx.prefix}voice unblock @user`\n"
-                f"`{ctx.prefix}voice kick @user` — Kick a user out of VC\n"
-                f"`{ctx.prefix}voice claim` — Claim an abandoned VC\n"
-                f"`{ctx.prefix}voice transfer @user` — Transfer VC ownership\n"
-                f"`{ctx.prefix}voice delete` — Delete your temporary VC"
+                f"`{ctx.prefix}j2c name <new name>` — Rename your VC\n"
+                f"`{ctx.prefix}j2c limit <0-99>` — Set user limit\n"
+                f"`{ctx.prefix}j2c lock` / `{ctx.prefix}j2c unlock` — Lock/Unlock VC\n"
+                f"`{ctx.prefix}j2c trust @user` / `{ctx.prefix}j2c untrust @user`\n"
+                f"`{ctx.prefix}j2c block @user` / `{ctx.prefix}j2c unblock @user`\n"
+                f"`{ctx.prefix}j2c kick @user` — Kick a user out of VC\n"
+                f"`{ctx.prefix}j2c claim` — Claim an abandoned VC\n"
+                f"`{ctx.prefix}j2c transfer @user` — Transfer VC ownership\n"
+                f"`{ctx.prefix}j2c delete` — Delete your temporary VC"
             ),
             color=0xE02B56
         )
