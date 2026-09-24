@@ -163,7 +163,6 @@ class HelpCommand(commands.HelpCommand):
               f" {LEVEL_UP} `»` Leveling {NEW}\n"
               f" {PIN} `»` Sticky {NEW}\n"
               f" {THUNDER} `»` Verification {NEW}\n"
-              f" {LOCK} `»` Encryption {NEW}\n" 
               f" {MESSAGE} `»` Joindm {NEW}\n"
               f" {ZCIRCLE_ALT1} `»` Customrole\n",
         inline=False

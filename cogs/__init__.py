@@ -75,7 +75,6 @@ from .commands.booster import Booster
 from .commands.leveling import Leveling
 from .commands.stickymessage import StickyMessage
 from .commands.verification import Verification
-from .commands.encryption import encryption
 from .commands.calc import calculator
 from .commands.joindm import joindm
 from .commands.nitro import Nitro
@@ -123,7 +122,6 @@ from .zyrox.booster import __boost
 from .zyrox.leveling import _leveling
 from .zyrox.sticky import _sticky
 from .zyrox.verify import _verify
-from .zyrox.encryption import _encrypt
 from .zyrox.joindm import _joindm
 
 #########ANTINUKE#########
@@ -250,7 +248,6 @@ async def setup(bot: zyrox):
   await bot.add_cog(Leveling(bot))
   await bot.add_cog(StickyMessage(bot))
   await bot.add_cog(Verification(bot))
-  await bot.add_cog(encryption(bot))
   await bot.add_cog(calculator(bot))
   await bot.add_cog(joindm(bot))
   await bot.add_cog(Nitro(bot))
@@ -282,7 +279,6 @@ async def setup(bot: zyrox):
   await bot.add_cog(_leveling(bot))
   await bot.add_cog(_sticky(bot))
   await bot.add_cog(_verify(bot))
-  await bot.add_cog(_encrypt(bot))
   await bot.add_cog(_joindm(bot))
 
 
