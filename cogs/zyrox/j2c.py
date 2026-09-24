@@ -36,7 +36,6 @@ class _J2C(commands.Cog):
               return emoji, label, description
 
     @commands.group()
-
     async def __J2C__(self, ctx: commands.Context):
-
-        """`>j2csetup`, `>j2creset`"""
+        """`j2c setup`, `j2c reset`, `voice lock`, `voice unlock`, `voice name`, `voice limit`, `voice trust`, `voice untrust`, `voice kick`, `voice block`, `voice unblock`, `voice claim`, `voice transfer`, `voice delete`"""
+        pass
