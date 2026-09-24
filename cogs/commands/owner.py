@@ -201,6 +201,55 @@ class Owner(commands.Cog):
             sonu = discord.Embed(title=f"{TICK} {BotName} Staffs", description=f"\n{staff_display}", color=0xFF0000)
             await ctx.send(embed=sonu)
 
+    @commands.command(name="gitpull", aliases=["update", "git_pull"])
+    @commands.is_owner()
+    async def gitpull(self, ctx):
+        """Pulls the latest code from GitHub and reloads extensions."""
+        msg = await ctx.send("🔄 Pulling latest changes from GitHub repository...")
+        try:
+            import subprocess
+            res = subprocess.run(
+                ["git", "pull", "--no-rebase", "origin", "main"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30
+            )
+            out = (res.stdout + "\n" + res.stderr).strip()
+
+            # Sanitize json databases after pulling
+            if os.path.isdir("jsondb"):
+                for root, _, files in os.walk("jsondb"):
+                    for f in files:
+                        if f.endswith(".json"):
+                            p = os.path.join(root, f)
+                            try:
+                                with open(p, "rb") as fb:
+                                    cnt = fb.read()
+                                if not cnt or cnt.startswith(b"\xff\xfe") or cnt.startswith(b"\xfe\xff"):
+                                    with open(p, "w", encoding="utf-8") as fw:
+                                        fw.write("{}")
+                            except Exception:
+                                pass
+
+            # Reload extensions
+            reloaded = []
+            for ext in list(self.client.extensions.keys()):
+                try:
+                    await self.client.reload_extension(ext)
+                    reloaded.append(ext)
+                except Exception as e:
+                    reloaded.append(f"{ext} (Error: {e})")
+
+            embed = discord.Embed(
+                title=f"{TICK} Git Pull & Reload Complete",
+                description=f"```\n{out[:1500]}\n```\n**Reloaded Extensions:**\n" + "\n".join(reloaded),
+                color=0x00FF88
+            )
+            await msg.edit(content=None, embed=embed)
+        except Exception as e:
+            await msg.edit(content=f"❌ Error during git pull: `{e}`")
+
     @commands.command(name="slist")
     @commands.check(is_owner_or_staff)
     async def _slist(self, ctx):

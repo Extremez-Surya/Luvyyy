@@ -33,6 +33,17 @@ from utils.emoji import TICK, CROSS
 BIRTHDAYS_FILE = os.path.abspath(os.path.join("jsondb", "birthdays.json"))
 BIRTHDAY_LOGS_FILE = os.path.abspath(os.path.join("jsondb", "birthday_logs.json"))
 
+for _bf in (BIRTHDAYS_FILE, BIRTHDAY_LOGS_FILE):
+    try:
+        if os.path.exists(_bf):
+            with open(_bf, "rb") as _f:
+                _b = _f.read()
+            if not _b or _b.startswith(b"\xff\xfe") or _b.startswith(b"\xfe\xff"):
+                with open(_bf, "w", encoding="utf-8") as _f:
+                    _f.write("{}")
+    except Exception:
+        pass
+
 MONTH_NAMES = [
     "", "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"

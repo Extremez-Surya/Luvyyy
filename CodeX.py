@@ -22,6 +22,57 @@ if sys.platform == "win32":
     if sys.stderr:
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
+def sanitize_json_databases():
+    """Ensure all JSON files in jsondb/ are valid UTF-8 and not corrupted with UTF-16 BOM."""
+    if not os.path.isdir("jsondb"):
+        os.makedirs("jsondb", exist_ok=True)
+        return
+
+    import json
+    for root, _, files in os.walk("jsondb"):
+        for f in files:
+            if f.endswith(".json"):
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "rb") as fb:
+                        content = fb.read()
+
+                    if not content or content.startswith(b"\xff\xfe") or content.startswith(b"\xfe\xff") or not content.strip():
+                        print(f"[Sanitize] Self-healed non-UTF8/empty file {p} to clean UTF-8 {{}}")
+                        with open(p, "w", encoding="utf-8") as fw:
+                            fw.write("{}")
+                    else:
+                        try:
+                            json.loads(content.decode("utf-8-sig"))
+                        except Exception:
+                            try:
+                                fixed = json.loads(content.decode("utf-16"))
+                                with open(p, "w", encoding="utf-8") as fw:
+                                    json.dump(fixed, fw, indent=2)
+                                print(f"[Sanitize] Converted UTF-16 {p} to clean UTF-8")
+                            except Exception:
+                                with open(p, "w", encoding="utf-8") as fw:
+                                    fw.write("{}")
+                                print(f"[Sanitize] Self-healed corrupted {p} to clean UTF-8 {{}}")
+                except Exception as e:
+                    pass
+
+def auto_git_update():
+    """Sync latest changes from GitHub if running in a git repo."""
+    if not os.path.exists(".git"):
+        return
+    try:
+        res = subprocess.run(["git", "pull", "--no-rebase", "origin", "main"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+        out = (res.stdout + " " + res.stderr).strip()
+        if "Already up to date" not in out and out:
+            print(f"[AutoUpdate] Git sync result: {out}")
+    except Exception:
+        pass
+
+# Run database sanitation and auto-git check immediately
+sanitize_json_databases()
+auto_git_update()
+
 # os.system("")
 import asyncio
 import traceback
