@@ -69,7 +69,6 @@ from .commands.messages import Messages
 from .commands.fastgreet import FastGreet
 from .commands.counting import Counting
 from .commands.j2c import JoinToCreate
-from .commands.ai import AI 
 from .commands.dms import StaffDMCog
 from .commands.booster import Booster
 from .commands.leveling import Leveling
@@ -92,7 +91,6 @@ from .events.mention import Mention
 from .events.react import React
 from .events.autoreact import AutoReactListener
 #from .events.topgg import TopGG
-from .events.ai import AIResponses 
 from .events.stickymessage import StickyMessageListener
 
 ########-------HELP-------########
@@ -117,7 +115,6 @@ from .zyrox.vanity import _vanity
 from .zyrox.inviteTracker import inviteTracker 
 from .zyrox.counting import _Counting
 from .zyrox.j2c import _J2C
-from .zyrox.ai import _ai
 from .zyrox.booster import __boost 
 from .zyrox.leveling import _leveling
 from .zyrox.sticky import _sticky
@@ -243,7 +240,6 @@ async def setup(bot: zyrox):
   await bot.add_cog(FastGreet(bot))
   await bot.add_cog(Jail(bot))
   await bot.add_cog(JoinToCreate(bot))
-  await bot.add_cog(AI(bot))
   await bot.add_cog(StaffDMCog(bot))
   await bot.add_cog(Leveling(bot))
   await bot.add_cog(StickyMessage(bot))
@@ -274,7 +270,6 @@ async def setup(bot: zyrox):
   await bot.add_cog(Counting(bot))
   await bot.add_cog(_Counting(bot))
   await bot.add_cog(_J2C(bot))
-  await bot.add_cog(_ai(bot))
   await bot.add_cog(__boost(bot))
   await bot.add_cog(_leveling(bot))
   await bot.add_cog(_sticky(bot))
@@ -297,7 +292,6 @@ async def setup(bot: zyrox):
   await bot.add_cog(AutoReactListener(bot))
   await bot.add_cog(NotifCommands(bot))
   await bot.add_cog(StickyMessageListener(bot))
-  await bot.add_cog(AIResponses(bot))
 
 
   await bot.add_cog(AntiMemberUpdate(bot))

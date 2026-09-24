@@ -158,7 +158,6 @@ class HelpCommand(commands.HelpCommand):
               f" {STAR} `»` Vanityroles\n"
               f" {ZCOUNTING} `»` Counting {NEW}\n"
               f" {SYSTEM} `»` J2C {NEW}\n"
-              f" {ZAI} `»` AI {NEW}\n"
               f" {BOOST} `»` Boost {NEW}\n"
               f" {LEVEL_UP} `»` Leveling {NEW}\n"
               f" {PIN} `»` Sticky {NEW}\n"
