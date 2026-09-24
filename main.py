@@ -90,10 +90,17 @@ def sanitize_json_databases():
                     print(f"[Sanitize] Warning checking {p}: {e}")
 
 def auto_git_update():
-    """Sync latest changes from GitHub if running in a git repo."""
-    if not os.path.exists(".git"):
-        return
+    """Sync latest changes from GitHub if running in a git repo, or initialize git if missing."""
+    repo_url = "https://github.com/Extremez-Surya/Luvyyy.git"
     try:
+        if not os.path.exists(".git"):
+            print("[AutoUpdate] .git folder missing. Initializing git link to GitHub...")
+            subprocess.run(["git", "init"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+            subprocess.run(["git", "remote", "add", "origin", repo_url], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+            subprocess.run(["git", "fetch", "origin", "main"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+            subprocess.run(["git", "reset", "--hard", "origin/main"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+            print("[AutoUpdate] Initialized git repo and synced with origin/main successfully!")
+            return
         res = subprocess.run(["git", "pull", "--no-rebase", "origin", "main"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
         out = (res.stdout + " " + res.stderr).strip()
         if "Already up to date" not in out and out:

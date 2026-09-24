@@ -208,14 +208,22 @@ class Owner(commands.Cog):
         msg = await ctx.send("🔄 Pulling latest changes from GitHub repository...")
         try:
             import subprocess
-            res = subprocess.run(
-                ["git", "pull", "--no-rebase", "origin", "main"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=30
-            )
-            out = (res.stdout + "\n" + res.stderr).strip()
+            repo_url = "https://github.com/Extremez-Surya/Luvyyy.git"
+            if not os.path.exists(".git"):
+                subprocess.run(["git", "init"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+                subprocess.run(["git", "remote", "add", "origin", repo_url], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+                subprocess.run(["git", "fetch", "origin", "main"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+                subprocess.run(["git", "reset", "--hard", "origin/main"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+                out = "Initialized git repository and synced with GitHub main branch."
+            else:
+                res = subprocess.run(
+                    ["git", "pull", "--no-rebase", "origin", "main"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=30
+                )
+                out = (res.stdout + "\n" + res.stderr).strip()
 
             # Sanitize json databases after pulling
             if os.path.isdir("jsondb"):
