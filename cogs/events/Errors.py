@@ -26,11 +26,10 @@ class Errors(Cog):
 
   @commands.Cog.listener()
   async def on_command_error(self, ctx: Context, error):
-    if ctx.command is None:
-      return
-    
-
     if isinstance(error, commands.CommandNotFound):
+      return
+
+    if ctx.command is None:
       return
 
     if isinstance(error, commands.MissingRequiredArgument):

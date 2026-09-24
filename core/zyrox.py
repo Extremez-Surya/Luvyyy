@@ -166,6 +166,11 @@ class zyrox(commands.AutoShardedBot):
                 return
             await self.invoke(ctx)
 
+    async def on_command_error(self, context: Context, exception: Exception) -> None:
+        if isinstance(exception, commands.CommandNotFound):
+            return
+        await super().on_command_error(context, exception)
+
     async def on_error(self, event_method: str, *args, **kwargs) -> None:
         etype, evalue, _ = sys.exc_info()
         if evalue:
