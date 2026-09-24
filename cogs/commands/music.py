@@ -118,7 +118,8 @@ class PlatformSelectView(LayoutView):
                 return
             await interaction.response.send_message(f"Searching...", ephemeral=True)
             await self.perform_search(source)
-            await interaction.message.delete()
+            with suppress(Exception):
+                await interaction.message.delete()
         return callback
 
     async def perform_search(self, source):
@@ -275,11 +276,15 @@ class MusicControlView(LayoutView):
     async def _cb_pause(self, interaction):
         if self.player.paused:
             await self.player.pause(False)
-            await self.player.channel.edit(status=f"{ICONS_PAUSE} Playing: {self.player.current.title}")
+            if getattr(self.player, "channel", None):
+                with suppress(Exception):
+                    await self.player.channel.edit(status=f"{ICONS_PAUSE} Playing: {self.player.current.title}")
             await interaction.response.send_message(f"Resumed by **{interaction.user.display_name}**.")
         elif self.player.playing:
             await self.player.pause(True)
-            await self.player.channel.edit(status=f"{ICONS_PAUSE} Paused: {self.player.current.title}")
+            if getattr(self.player, "channel", None):
+                with suppress(Exception):
+                    await self.player.channel.edit(status=f"{ICONS_PAUSE} Paused: {self.player.current.title}")
             await interaction.response.send_message(f"Paused by **{interaction.user.display_name}**.")
 
     async def _cb_skip(self, interaction):
@@ -313,10 +318,12 @@ class MusicControlView(LayoutView):
 
     async def _cb_stop(self, interaction):
         if self.player:
-            voice_channel = self.player.channel
+            voice_channel = getattr(self.player, "channel", None)
             if voice_channel:
-                await voice_channel.edit(status=None)
-            await self.player.disconnect()
+                with suppress(Exception):
+                    await voice_channel.edit(status=None)
+            with suppress(Exception):
+                await self.player.disconnect()
             await interaction.response.send_message(f"Stopped and disconnected by **{interaction.user.display_name}**.")
         else:
             await interaction.response.send_message("Not connected.", ephemeral=True)
@@ -446,33 +453,50 @@ class Music(commands.Cog):
 
     async def on_track_end(self, payload: wavelink.TrackEndEventPayload):
         player = payload.player
+        if not player or not getattr(player, "queue", None):
+            return
         if not player.queue:
-            if player.queue.mode == wavelink.QueueMode.loop:
-                await player.play(payload.track)
-            elif player.autoplay == wavelink.AutoPlayMode.enabled:
+            if getattr(player.queue, "mode", None) == wavelink.QueueMode.loop:
+                if payload.track:
+                    with suppress(Exception):
+                        await player.play(payload.track)
+            elif getattr(player, "autoplay", None) == wavelink.AutoPlayMode.enabled:
                 await asyncio.sleep(5)
-                if player.current:
-                    await self.display_player_embed(player, player.current, player.ctx, autoplay=True)
+                if getattr(player, "current", None):
+                    if hasattr(player, "ctx") and player.ctx:
+                        with suppress(Exception):
+                            await self.display_player_embed(player, player.current, player.ctx, autoplay=True)
                 else:
-                    await player.ctx.send(view=CV2("No suitable track found for autoplay."))
+                    if hasattr(player, "ctx") and player.ctx:
+                        with suppress(Exception):
+                            await player.ctx.send(view=CV2("No suitable track found for autoplay."))
             else:
-                await player.disconnect()
-                support = Button(label='Support', style=discord.ButtonStyle.link, url='https://discord.com/users/731390792567881739')
-                vote = Button(label='Vote', style=discord.ButtonStyle.link, url='https://top.gg/bot//vote')
-                view = LayoutView(timeout=None)
-                container = build_container(
-                    TextDisplay("**Queue Ended**"),
-                    Separator(visible=True),
-                    TextDisplay("All tracks have been played, leaving the voice channel."),
-                    Separator(visible=True),
-                    ActionRow(support, vote),
-                )
-                view.add_item(container)
-                await player.ctx.send(view=view)
+                with suppress(Exception):
+                    await player.disconnect()
+                if hasattr(player, "ctx") and player.ctx:
+                    try:
+                        support = Button(label='Support', style=discord.ButtonStyle.link, url='https://discord.com/users/731390792567881739')
+                        vote = Button(label='Vote', style=discord.ButtonStyle.link, url='https://top.gg/bot//vote')
+                        view = LayoutView(timeout=None)
+                        container = build_container(
+                            TextDisplay("**Queue Ended**"),
+                            Separator(visible=True),
+                            TextDisplay("All tracks have been played, leaving the voice channel."),
+                            Separator(visible=True),
+                            ActionRow(support, vote),
+                        )
+                        view.add_item(container)
+                        await player.ctx.send(view=view)
+                    except Exception:
+                        pass
         else:
-            next_track = await player.queue.get_wait()
-            await player.play(next_track)
-            await self.display_player_embed(player, next_track, player.ctx)
+            try:
+                next_track = await player.queue.get_wait()
+                await player.play(next_track)
+                if hasattr(player, "ctx") and player.ctx:
+                    await self.display_player_embed(player, next_track, player.ctx)
+            except Exception as e:
+                print(f"[Music] Error advancing queue: {e}")
 
 
 
@@ -593,7 +617,8 @@ class Music(commands.Cog):
                         await ctx.message.add_reaction("✅")
 
                 await ctx.send(view=CV2(f"{ZPLUS} Added **{c}** of **{playlist_length}** tracks from **playlist** **[{playlist_info['name']}](https://discord.com/users/731390792567881739)** to the queue."))
-                await lmao.delete()
+                with suppress(Exception):
+                    await lmao.delete()
                 
                 if not vc.playing:
                     next_track = await vc.queue.get_wait()
@@ -768,7 +793,9 @@ class Music(commands.Cog):
 
         if vc and vc.playing and not vc.paused:
             await vc.pause(True)
-            await vc.channel.edit(status=f"{ZMUSICPAUSE} Paused: {vc.current.title}")
+            if getattr(vc, "channel", None):
+                with suppress(Exception):
+                    await vc.channel.edit(status=f"{ZMUSICPAUSE} Paused: {vc.current.title}")
             await ctx.send(view=CV2(f"Paused by {ctx.author.mention}."))
         else:
             await ctx.send(view=CV2(f"{WARNING}   Nothing is playing or already paused."))
@@ -789,7 +816,9 @@ class Music(commands.Cog):
 
         if vc and vc.paused:
             await vc.pause(False)
-            await vc.channel.edit(status=f"{MUSIC_ALT1} Playing: {vc.current.title}")
+            if getattr(vc, "channel", None):
+                with suppress(Exception):
+                    await vc.channel.edit(status=f"{MUSIC_ALT1} Playing: {vc.current.title}")
             await ctx.send(view=CV2(f"Resumed by {ctx.author.mention}."))
         else:
             await ctx.send(view=CV2("Player is not paused."))
@@ -1027,19 +1056,26 @@ class Music(commands.Cog):
     @commands.Cog.listener()
     async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload):
         player = payload.player
-        track = player.current
-        guild_id = player.guild.id
+        if not player:
+            return
+        track = getattr(player, "current", None)
+        if not track:
+            return
+        guild = getattr(player, "guild", None)
+        guild_id = guild.id if guild else None
+        if not guild_id:
+            return
 
-        voice_channel = player.channel
+        voice_channel = getattr(player, "channel", None)
         if voice_channel:
-            await voice_channel.edit(status=f"{MUSIC_ALT1} Playing: {track.title}")  # type: ignore
+            with suppress(Exception):
+                await voice_channel.edit(status=f"{MUSIC_ALT1} Playing: {track.title}")
 
         if guild_id not in track_histories:
             track_histories[guild_id] = []
 
         if not track_histories[guild_id] or track_histories[guild_id][-1] != track:
             track_histories[guild_id].append(track)
-
 
             if len(track_histories[guild_id]) > 10:
                 track_histories[guild_id].pop(0)
@@ -1055,8 +1091,11 @@ class Music(commands.Cog):
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         player = payload.player
-        voice_channel = player.channel
-
+        if not player:
+            return
+        voice_channel = getattr(player, "channel", None)
         if voice_channel:
-            await voice_channel.edit(status=None)  # type: ignore
-        await self.on_track_end(payload)
+            with suppress(Exception):
+                await voice_channel.edit(status=None)
+        with suppress(Exception):
+            await self.on_track_end(payload)
