@@ -40,9 +40,24 @@ def ensure_dependencies():
         except Exception as e:
             print(f"[AutoClean] Pip install failed: {e}")
 
+def wait_for_network(host="gateway.discord.gg", port=443, max_retries=10):
+    import socket
+    import time
+    for i in range(max_retries):
+        try:
+            socket.getaddrinfo(host, port)
+            return True
+        except socket.gaierror:
+            print(f"[Network] Waiting for host DNS/network to stabilize ({i+1}/{max_retries})...")
+            time.sleep(2)
+        except Exception:
+            return True
+    return False
+
 if __name__ == "__main__":
     auto_clean_disk()
     ensure_dependencies()
+    wait_for_network()
     
     # Auto-restore databases if a new zip was deployed or databases were reset
     try:
