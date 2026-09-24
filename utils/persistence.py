@@ -302,15 +302,20 @@ async def upload_backup_to_discord(client_or_webhook, channel_or_webhook_url=Non
     # 2. Try Webhook URL if available
     target_webhook = channel_or_webhook_url if (isinstance(channel_or_webhook_url, str) and channel_or_webhook_url.startswith("http")) else webhook_url
     if target_webhook and target_webhook.startswith("https://discord.com/api/webhooks/"):
-        try:
-            async with aiohttp.ClientSession() as session:
-                webhook = discord.Webhook.from_url(target_webhook, session=session)
-                file = discord.File(zip_path, filename=f"zyrox_backup_{int(stats['timestamp'])}.zip")
-                await webhook.send(embed=embed, file=file, username="Zyrox Backup System")
-                print(f"[Persistence] [CLOUD] Backup successfully uploaded to Discord Webhook")
-                return True
-        except Exception as e:
-            print(f"[Persistence] Webhook upload warning: {e}")
+        timeout = aiohttp.ClientTimeout(total=25)
+        for attempt in range(2):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    webhook = discord.Webhook.from_url(target_webhook, session=session)
+                    file = discord.File(zip_path, filename=f"zyrox_backup_{int(stats['timestamp'])}.zip")
+                    await webhook.send(embed=embed, file=file, username="Zyrox Backup System")
+                    print(f"[Persistence] [CLOUD] Backup successfully uploaded to Discord Webhook")
+                    return True
+            except Exception as e:
+                if attempt == 1:
+                    print(f"[Persistence] Webhook upload notice (local backup safe): {e}")
+                else:
+                    await asyncio.sleep(2)
 
     return False
 
