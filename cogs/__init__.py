@@ -78,7 +78,6 @@ from .commands.verification import Verification
 from .commands.encryption import encryption
 from .commands.calc import calculator
 from .commands.joindm import joindm
-from .commands.Birthday import Birthdays
 from .commands.nitro import Nitro
 from .commands.image import ImageCommands
 from .commands.youtube import Youtube
@@ -126,7 +125,6 @@ from .zyrox.sticky import _sticky
 from .zyrox.verify import _verify
 from .zyrox.encryption import _encrypt
 from .zyrox.joindm import _joindm
-from .zyrox.birth import _birth
 
 #########ANTINUKE#########
 
@@ -255,7 +253,6 @@ async def setup(bot: zyrox):
   await bot.add_cog(encryption(bot))
   await bot.add_cog(calculator(bot))
   await bot.add_cog(joindm(bot))
-  await bot.add_cog(Birthdays(bot))
   await bot.add_cog(Nitro(bot))
   await bot.add_cog(ImageCommands(bot))
   await bot.add_cog(Youtube(bot))
@@ -287,7 +284,6 @@ async def setup(bot: zyrox):
   await bot.add_cog(_verify(bot))
   await bot.add_cog(_encrypt(bot))
   await bot.add_cog(_joindm(bot))
-  await bot.add_cog(_birth(bot))
 
 
   

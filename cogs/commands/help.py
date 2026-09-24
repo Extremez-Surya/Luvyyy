@@ -165,7 +165,6 @@ class HelpCommand(commands.HelpCommand):
               f" {THUNDER} `»` Verification {NEW}\n"
               f" {LOCK} `»` Encryption {NEW}\n" 
               f" {MESSAGE} `»` Joindm {NEW}\n"
-              f" {ZCIRCLE} `»` Birthday {NEW}\n"
               f" {ZCIRCLE_ALT1} `»` Customrole\n",
         inline=False
     )
